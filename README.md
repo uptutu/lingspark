@@ -43,24 +43,36 @@ lingspark 以 **hook** 的形式挂在代理上，代理不需要"记得"调用�
 
 ## 安装
 
-目前支持 **Apple 芯片（M 系列）的 Mac**。从 [Releases](https://github.com/rytesdd/lingspark/releases) 下载：
+从 [Releases](https://github.com/rytesdd/lingspark/releases) 下载：
 
-| | 文件 |
-|---|---|
-| **客户端**（推荐） | `lingspark-…-mac-arm64.dmg`，下载约 25MB，拖进"应用程序"即可 |
-| 命令行版 | `lingspark-macos-arm64`，不需要另外装 Node |
+| 平台 | 客户端（推荐） | 命令行版 |
+|---|---|---|
+| **Mac**（Apple 芯片） | `lingspark-…-mac-arm64.dmg`，拖进"应用程序" | `lingspark-macos-arm64` |
+| **Windows**（x64） | `lingspark-…-win-x64-setup.exe`，双击安装 | `lingspark.exe` |
+| **Linux**（x64） | `lingspark_…_amd64.deb`（Debian/Ubuntu/Mint）或 `lingspark-…-linux-x64.tar.gz`（其他发行版） | 同名不带后缀的文件 |
 
-Mac 客户端没有自带浏览器内核，窗口用的是系统自带的网页组件，所以装好只占约 100MB，其中绝大部分是
-检查程序自己的运行环境。
+三个平台的客户端都**不自带浏览器内核**，装好只占约 100MB，绝大部分是检查程序自己的运行环境。
+Mac 的窗口用系统自带的网页组件；Windows 和 Linux 用系统自带的 Edge / Chromium 的"应用窗口"
+（没有 Chromium 时退回默认浏览器）。
 
-预览版还没有做代码签名，第一次打开会提示"Apple 无法验证"：点"完成"（不要点"移到废纸篓"），然后到"系统设置 → 隐私与安全性"，在"安全性"一栏点"仍要打开"并输入开机密码。macOS 15 起右键 →"打开"已经不能跳过这一步。命令行版可以执行 `xattr -d com.apple.quarantine ./lingspark-macos-arm64`。
+**第一次打开**：预览版都没有做代码签名。
 
-也可以从源码构建（需要 Node 22+ 和 pnpm 9）：
+- **Mac**：点"完成"（不要点"移到废纸篓"），然后到"系统设置 → 隐私与安全性"，在"安全性"一栏点"仍要打开"并输入开机密码。macOS 15 起右键 →"打开"已经不能跳过这一步。
+- **Windows**：双击安装程序，在"Windows 防护"弹窗里点"更多信息"→"仍要运行"。
+- **Linux**：用 `sudo apt install ./lingspark_…_amd64.deb` 安装，或解压 tar.gz 后按里面的《安装说明.md》做；都是本地文件，不会触发签名检查。
+
+也可以从源码构建（需要 Node 22+ 和 pnpm 9；每个平台在自己的系统上构建）：
 
 ```bash
 pnpm install && pnpm run build:sea          # 命令行版：packages/cli/sea/lingspark
-pnpm --filter @lingspark/desktop dist         # Mac 客户端（要装 Xcode 命令行工具）：packages/desktop/release/
+pnpm run build:client                       # Mac 客户端（要装 Xcode 命令行工具）
+pnpm run build:client:win                   # Windows 安装程序（要装 NSIS）
+pnpm run build:client:linux                 # Linux 的 .deb 和 .tar.gz（要装 dpkg-deb）
 ```
+
+构建客户端之前先关掉正在运行的客户端：Windows 上 `packages/cli/sea/lingspark.exe`
+既是命令行版也是客户端（D-074），双击它会开配置页，而 Windows 不允许覆盖一个正在
+运行的程序——构建会直接失败并告诉你关掉它。
 
 ## 快速开始
 
@@ -178,11 +190,11 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 
 ## 现状
 
-**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、对话内自审、Mac 客户端、模型横向评测、会话记录挖掘（Claude Code）。
+**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、对话内自审、Mac / Windows / Linux 客户端、模型横向评测、会话记录挖掘（Claude Code）。
 
 **还没做**：
 - 周报与自动回测：从你的修改意见里总结出候选规则，回测后交你审核上线
-- 自动更新、macOS 签名与公证、Intel Mac 与 Windows 版
+- 自动更新、macOS 签名与公证、代码签名（三个平台都没签）、Intel Mac
 
 欢迎提 issue 和 PR，尤其是：你在真实文档里遇到的误报（附一段脱敏后的原文）、新代理的 hook 接入实测。
 
@@ -192,7 +204,13 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 pnpm install
 pnpm run ci          # lint + typecheck + test
 pnpm run build:sea   # 单文件程序
+pnpm run build:client        # Mac 客户端
+pnpm run build:client:win    # Windows 安装程序
+pnpm run build:client:linux  # Linux 的 .deb 和 .tar.gz
 ```
+
+客户端是三个平台各打各的：Node 单文件程序不能交叉编译（D-025），所以每个平台在自己的
+runner 或自己的机器上构建，`release.yml` 就是按这个排的。
 
 `DECISIONS.md` 记录了主要的设计决策和理由。语义规则的测试回放的是 `packages/rules-builtin/fixtures/replay/` 里录好的模型回答，CI 不联网；改了语义规则后用 `lingspark eval --record` 重录。
 

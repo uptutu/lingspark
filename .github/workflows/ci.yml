@@ -41,6 +41,7 @@ jobs:
       - run: pnpm run typecheck
 
       - run: pnpm run test
+      - run: pnpm run test:scripts
 
       - run: pnpm run build
 
@@ -55,4 +56,79 @@ jobs:
           path: |
             packages/cli/sea/lingspark
             packages/cli/sea/lingspark.exe
+          if-no-files-found: error
+
+  # The clients. A Node single-file executable only builds for the platform it
+  # is built on (D-025), so this is a matrix of its own -- and it is the only
+  # place the packaging scripts get exercised, since releases are published by
+  # hand. macOS is not here: its client needs dmgbuild, which is a Python venv
+  # this job has no reason to create (D-063).
+  client:
+    name: client / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lingspark/rules-builtin build
+      - run: pnpm run build
+
+      - name: Install the NSIS toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis --no-progress -y
+
+      - name: Build the Windows client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pnpm run build:client:win
+
+      - name: Build the Linux client
+        if: runner.os == 'Linux'
+        shell: bash
+        run: pnpm run build:client:linux
+
+      # The packages have to exist and have to be what they claim to be: a
+      # build that succeeds but produces an empty archive is still a failure.
+      - name: Check the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem packages/desktop/release/win-x64/*-win-x64-setup.exe
+          if (-not $setup) { throw '没有生成安装程序' }
+          if ($setup.Length -lt 5MB) { throw "安装程序只有 $($setup.Length) 字节" }
+          $setup | Select-Object Name, Length
+
+      - name: Check the Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rel=packages/desktop/release/linux-x64
+          deb=$(ls $rel/*_amd64.deb)
+          tarball=$(ls $rel/*-linux-x64.tar.gz)
+          [ -s "$deb" ] || { echo "没有生成 .deb"; exit 1; }
+          [ -s "$tarball" ] || { echo "没有生成 tar.gz"; exit 1; }
+          dpkg-deb -I "$deb" | head -20
+          dpkg-deb -c "$deb" | grep -q 'usr/share/applications/lingspark.desktop'
+          dpkg-deb -c "$deb" | grep -q 'usr/share/icons/hicolor/512x512/apps/lingspark.png'
+          tar -tzf "$tarball" | grep -q 'lingspark.desktop'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingspark-client-${{ matrix.os }}
+          path: packages/desktop/release/*
           if-no-files-found: error

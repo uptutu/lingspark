@@ -260,3 +260,58 @@ describe('setup page server', () => {
     await s.closed;
   });
 });
+
+describe('the page in a window of its own', () => {
+  const fetchPage = async (query: string): Promise<string> => {
+    const s = await startSetupServer({ ...e, builtinRules: [] });
+    try {
+      const body = await new Promise<string>((resolve, reject) => {
+        const r = request(`http://127.0.0.1:${String(s.port)}/?t=${s.token}${query}`, (res) => {
+          let out = '';
+          res.on('data', (c: Buffer) => (out += c.toString()));
+          res.on('end', () => resolve(out));
+        });
+        r.on('error', reject);
+        r.end();
+      });
+      return body;
+    } finally {
+      s.close();
+    }
+  };
+
+  // The clients on Windows and Linux open the page in a Chromium app window
+  // and say so with `?window=1`; the Mac shell says it in the user agent.
+  // Both paths have to add the class, because only the Mac window hides its
+  // own title bar: elsewhere the page has to fill the window and stop
+  // drawing a second header of its own (D-075).
+  it('reads the window marker before the address bar is cleared', async () => {
+    const page = await fetchPage('&window=1');
+    expect(page).toContain("get('window') === '1'");
+    // Read before replaceState, or the reload has already taken it away.
+    expect(page.indexOf("get('window')")).toBeLessThan(page.indexOf("replaceState"));
+  });
+
+  it('still accepts the Mac client naming itself in the user agent', async () => {
+    const page = await fetchPage('');
+    expect(page).toContain("navigator.userAgent.indexOf('LingSpark/') >= 0");
+  });
+
+  it('draws no title bar of its own where the window already has one', async () => {
+    const page = await fetchPage('&window=1');
+    expect(page).toContain('body.win-app .bar, body.linux-app .bar { display: none; }');
+    // The Mac shell hides the window's title and drops the traffic lights
+    // into the page's bar, so that one still shows.
+    expect(page).toContain('body.mac-app .bar');
+  });
+
+  it('keeps the settings button reachable without a bar', async () => {
+    const page = await fetchPage('&window=1');
+    // Floated in the corner rather than left inside the hidden bar.
+    expect(page).toContain('.gear { position: absolute;');
+    const bar = page.indexOf('<div class="bar">');
+    const gear = page.indexOf('id="gear"');
+    expect(gear).toBeGreaterThan(bar);
+    expect(page.indexOf('</div>', bar)).toBeLessThan(gear);
+  });
+});

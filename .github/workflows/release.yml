@@ -1,9 +1,12 @@
 name: Release
 
-# Builds the Mac client and the single-file executable after the same checks
-# CI runs, and attaches them to a GitHub release. Run by hand for now:
-# releases are Mac-only (Apple silicon) and so far published from a local
-# build (D-072).
+# Builds the client and the single-file executable after the same checks CI
+# runs, and attaches them to a GitHub release. Run by hand.
+#
+# Each platform is built on its own runner: a Node single-file executable can
+# only be built for the platform it is built on (D-025), and the clients are
+# native artefacts (D-063 / D-074). Nothing is signed yet -- the first-launch
+# step for each platform is in the README.
 on:
   workflow_dispatch:
 
@@ -21,6 +24,15 @@ jobs:
           - os: macos-14
             asset: lingspark-macos-arm64
             desktop: true
+          # The program is the client on Windows: one executable, packed by
+          # NSIS into an installer (D-061 / D-074).
+          - os: windows-latest
+            asset: lingspark-win-x64-setup
+            desktop: false
+          # .deb for Debian families, tar.gz for the rest (D-074).
+          - os: ubuntu-latest
+            asset: lingspark-linux-x64
+            desktop: false
     steps:
       - uses: actions/checkout@v4
 
@@ -38,23 +50,59 @@ jobs:
       - run: pnpm run lint
       - run: pnpm run typecheck
       - run: pnpm run test
+      - run: pnpm run test:scripts
       - run: pnpm run build
       - run: pnpm --filter @lingspark/cli build:sea
 
-      - name: Name the executable for its platform
+      - name: Prepare the output directory
         shell: bash
-        run: |
-          src=packages/cli/sea/lingspark
-          [ -f "$src.exe" ] && src="$src.exe"
-          mkdir -p out && cp "$src" "out/${{ matrix.asset }}"
+        run: mkdir -p out
 
-      # The Mac client ships the CLI built just above.
+      # --- the client for this platform -------------------------------------
+      # macOS: LingSpark.app (a Swift WKWebView shell) wrapped in a .dmg.
       - name: Build the Mac client
         if: matrix.desktop
         shell: bash
         run: |
           pnpm --filter @lingspark/desktop dist
           cp packages/desktop/release/*.dmg out/
+
+      # Windows: the executable is the client, so this step builds the SEA
+      # binary with the icon already stamped in and then wraps it with NSIS.
+      # choco provides makensis; rcedit comes from the workspace.
+      - name: Install the NSIS toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis --no-progress -y
+
+      - name: Build the Windows client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pnpm --filter @lingspark/desktop dist:win
+
+      - name: Collect the Windows client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item packages/desktop/release/win-x64/*-win-x64-setup.exe out/
+
+      # .deb for the Debian families, tar.gz for everyone else.
+      - name: Build the Linux client
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          pnpm --filter @lingspark/desktop dist:linux
+          cp packages/desktop/release/linux-x64/lingspark_*_amd64.deb out/
+          cp packages/desktop/release/linux-x64/lingspark-*-linux-x64.tar.gz out/
+
+      # The command-line build of every platform, for the one who wants no
+      # installer at all. On Windows and Linux it is the very same file the
+      # client is built from -- the hooks use a copy of it either way.
+      - name: Name the command-line build
+        shell: bash
+        run: |
+          src=packages/cli/sea/lingspark
+          [ -f "$src.exe" ] && src="$src.exe"
+          cp "$src" "out/${{ matrix.asset }}-cli"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -83,5 +131,5 @@ jobs:
           gh release create "${{ github.ref_name }}" out/* \
             --repo "${{ github.repository }}" \
             --title "lingspark ${{ github.ref_name }}" \
-            --notes "预览版。普通用户下载桌面客户端（Mac 选 .dmg，Windows 选 setup.exe）；命令行版是不带后缀或 .exe 的单个文件。都没有签名，首次打开的放行方法见 README。" \
+            --notes "预览版。Mac 选 .dmg，Windows 选 setup.exe，Debian/Ubuntu 选 .deb，其余 Linux 发行版选 .tar.gz。不带后缀或带 -cli 的是命令行版。都没有签名：macOS 第一次打开按 README 的步骤放行；Windows 需在「Windows 防护」里确认；Linux 用 apt install ./xxx.deb 或解压 tar.gz。" \
             --prerelease

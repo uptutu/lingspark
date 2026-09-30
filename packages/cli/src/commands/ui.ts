@@ -41,34 +41,93 @@ function serveWindow(url: string, io: Io, close: () => void): void {
   process.stdin.resume();
 }
 
-/** Edge, which every Windows 10 and 11 has, can show a page as a window of its own. */
-function edgePath(): string | null {
-  const roots = [process.env['ProgramFiles(x86)'], process.env['ProgramFiles'], process.env['LOCALAPPDATA']];
-  for (const root of roots) {
-    if (root === undefined) continue;
-    const exe = path.join(root, 'Microsoft', 'Edge', 'Application', 'msedge.exe');
+/**
+ * A browser that can show a page as a window of its own. Windows and Linux
+ * have no one browser to name, so this is a list: the first one installed
+ * wins. Windows 10 and 11 always have Edge, so it is always found there.
+ */
+function browserPath(): string | null {
+  const roots =
+    process.platform === 'win32'
+      ? [process.env['ProgramFiles(x86)'], process.env['ProgramFiles'], process.env['LOCALAPPDATA']]
+      : process.platform === 'darwin'
+        ? ['/Applications', path.join(homedir(), 'Applications')]
+        : // Linux: the usual names, then whatever the alternatives system
+          // says -- that is where a non-standard install actually is (D-074).
+          ['/usr/bin', '/usr/local/bin', '/opt/google/chrome', '/snap/bin', '/usr/lib/flatpak/exports/bin'];
+  const names =
+    process.platform === 'win32'
+      ? [path.join('Microsoft', 'Edge', 'Application', 'msedge.exe')]
+      : process.platform === 'darwin'
+        ? [
+            path.join('Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'),
+            path.join('Microsoft Edge.app', 'Contents', 'MacOS', 'Microsoft Edge'),
+            path.join('Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+          ]
+        : ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'microsoft-edge', 'brave-browser'];
+  for (const name of names) {
+    for (const root of roots) {
+      if (root === undefined) continue;
+      const exe = path.join(root, name);
+      if (existsSync(exe)) return exe;
+    }
+  }
+  return process.platform === 'linux' ? linuxBrowserFromAlternatives() : null;
+}
+
+/**
+ * `update-alternatives` is the one place on Linux that knows where a browser
+ * really is, including installs this script would not guess. Read only; if it
+ * is not there, the caller falls back to the default browser.
+ */
+function linuxBrowserFromAlternatives(): string | null {
+  const alt = '/etc/alternatives';
+  for (const name of ['x-www-browser', 'gnome-www-browser', 'www-browser']) {
+    const exe = path.join(alt, name);
     if (existsSync(exe)) return exe;
   }
   return null;
 }
 
 /**
- * On Windows the page opens as an Edge app window: no tabs, no address bar,
- * and a profile of its own, so the process we start is that window and its
- * exit means the window was closed.
+ * On Windows and Linux the program is the client (D-061 / D-074): it starts
+ * the page as a window of its own -- no tabs, no address bar -- in a profile
+ * of its own, so the process we start is that window and its exit means the
+ * window was closed. Chromium's `--app` is the same switch Edge honours.
+ *
+ * `&window=1` is how the page learns it is in that window. The Mac shell says
+ * so in its user agent, but nothing sets one here, and the page has to know:
+ * it fills the window instead of drawing a 320x400 card, and it leaves off its
+ * own title bar -- this window brings one of its own, above the page (D-075).
  */
-function openEdgeWindow(url: string, close: () => void): ChildProcess | null {
-  const edge = edgePath();
-  if (edge === null) return null;
+function openAppWindow(url: string, close: () => void): ChildProcess | null {
+  const exe = browserPath();
+  if (exe === null) return null;
+  const address = `${url}${url.includes('?') ? '&' : '?'}window=1`;
   try {
     const child = spawn(
-      edge,
+      exe,
       [
-        `--app=${url}`,
+        `--app=${address}`,
         `--user-data-dir=${path.join(dataDir(), 'window')}`,
+        // The window is 336x440: the page fills the content area, and what is
+        // left of those numbers is the frame and the title bar, whose height
+        // is the user's setting, not ours (D-075).
         '--window-size=336,440',
         '--no-first-run',
         '--no-default-browser-check',
+        // Edge opens its own welcome page over ours on a fresh profile -- the
+        // window title says LingSpark while the body is a sign-in prompt, and
+        // the user is left staring at it instead of the setup page. These are
+        // Edge's own first-run features; Chromium needs no equivalent, and
+        // asking it for ones it does not know is harmless.
+        '--disable-features=msEdgeFirstRunExperience,msEdgeWelcomePage,msEdgeSignIn,Translate,OptimizationHints',
+        // Nothing here should ever reach the network: the page is a local
+        // address, and a background request that stalls would keep the window
+        // blank on a slow connection.
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-sync',
       ],
       { stdio: 'ignore' },
     );
@@ -82,8 +141,9 @@ function openEdgeWindow(url: string, close: () => void): ChildProcess | null {
 
 /**
  * `lingspark ui`, and what a double-click on the program does: the setup page
- * in the browser -- on Windows in a window of its own -- served until the user
- * clicks "done", closes it, or leaves it idle.
+ * in a window of its own on Windows and Linux, and in the browser elsewhere
+ * (the Mac client has its own shell and starts us with `--window`). Served
+ * until the user clicks "done", closes the window, or leaves it idle.
  */
 export async function runUi(argv: string[], io: Io): Promise<number> {
   const { values } = parseArgs({
@@ -100,12 +160,13 @@ export async function runUi(argv: string[], io: Io): Promise<number> {
     ...(shell ? { idleMs: 7 * 24 * 60 * 60_000 } : {}),
   });
   const close = (): void => server.close();
-  let edge: ChildProcess | null = null;
+  const windowed = process.platform === 'win32' || process.platform === 'linux';
+  let app: ChildProcess | null = null;
   if (shell) {
     serveWindow(server.url, io, close);
   } else if (values['no-open'] === true) {
     io.out(`${msg.setup.uiNoBrowser(server.url)}\n`);
-  } else if (process.platform === 'win32' && (edge = openEdgeWindow(server.url, close)) !== null) {
+  } else if (windowed && (app = openAppWindow(server.url, close)) !== null) {
     io.out(`${msg.setup.uiWindow}\n`);
   } else {
     const opened = openBrowser(server.url);
@@ -113,7 +174,7 @@ export async function runUi(argv: string[], io: Io): Promise<number> {
   }
   await server.closed;
   // "完成" on the page: the window goes too.
-  if (edge !== null && edge.exitCode === null) edge.kill();
+  if (app !== null && app.exitCode === null) app.kill();
   if (shell) process.stdin.destroy();
   else io.out(`${msg.setup.done}\n`);
   return EXIT_OK;

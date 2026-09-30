@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "lingspark Mac 客户端：一个小窗口，一键把文档检查装进你的 AI 代理",
+  "description": "lingspark 客户端：一个小窗口，一键把文档检查装进你的 AI 代理",
   "author": "Kepler",
   "license": "Apache-2.0",
   "scripts": {
-    "dist": "node scripts/build-mac.mjs"
+    "dist": "node scripts/build-mac.mjs",
+    "dist:win": "node scripts/build-windows.mjs",
+    "dist:linux": "node scripts/build-linux.mjs"
+  },
+  "devDependencies": {
+    "rcedit": "^4.0.1"
   }
 }

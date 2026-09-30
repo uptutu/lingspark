@@ -38,15 +38,22 @@ body { font: 12.5px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Micro
 body.in-app .app { width: 100%; height: 100%; }
 body:not(.in-app) .app { border: 1px solid var(--line); border-radius: 6px; }
 
-.bar { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; -webkit-app-region: drag; user-select: none; }
+.bar { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 46px 0 14px; -webkit-app-region: drag; user-select: none; }
 body.mac-app .bar { padding-left: 78px; }
-/* Windows draws its window buttons over the right end of the page's bar. */
-body.win-app .bar { padding-right: 146px; }
+/* Windows and Linux open the page in a window that brings a title bar of its
+   own, standing above the page rather than over it: two headers are one too
+   many, so the page draws none there and floats the settings button in the
+   corner instead. The Mac shell hides the window's title and puts the traffic
+   lights inside the page's bar, so that one stays (D-075). */
+body.win-app .bar, body.linux-app .bar { display: none; }
 .bar .mark { width: 16px; height: 16px; flex-shrink: 0; margin-right: -2px; }
 .bar b { font-size: 12.5px; font-weight: 600; flex: 1; }
 .icon { -webkit-app-region: no-drag; width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .icon:hover { background: var(--raise); color: var(--text); }
+/* At the right end of the bar, over the window's corner where the page has no
+   bar of its own. The bar leaves the same 36 points of room for it. */
+.gear { position: absolute; top: 7px; right: 10px; z-index: 2; }
 
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .home { flex: 1; display: flex; flex-direction: column; padding: 0 20px; }
@@ -155,10 +162,10 @@ label.row { cursor: pointer; }
   <div class="bar">
     <img class="mark" src="${LOGO_DATA_URI}" alt="" aria-hidden="true">
     <b>LingSpark · 灵光</b>
-    <button class="icon" id="gear" type="button" aria-label="设置">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="10.5" cy="4.5" r="1.6" fill="#000"/><circle cx="5.5" cy="8" r="1.6" fill="#000"/><circle cx="9" cy="11.5" r="1.6" fill="#000"/></svg>
-    </button>
   </div>
+  <button class="icon gear" id="gear" type="button" aria-label="设置">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="10.5" cy="4.5" r="1.6" fill="#000"/><circle cx="5.5" cy="8" r="1.6" fill="#000"/><circle cx="9" cy="11.5" r="1.6" fill="#000"/></svg>
+  </button>
 
   <div class="view" id="homeView">
     <div class="home">
@@ -211,12 +218,24 @@ label.row { cursor: pointer; }
     if (token) sessionStorage.setItem('lingspark-token', token);
     else token = sessionStorage.getItem('lingspark-token') || '';
   } catch (e) { /* storage off: a reload shows an empty page */ }
+  // The Mac client's window names itself in the user agent (D-061); the
+  // Windows and Linux clients ask for a window of their own and say so in the
+  // address, because nothing sets a user agent for those (D-074).
+  var inWindow = new URLSearchParams(location.search).get('window') === '1' ||
+    navigator.userAgent.indexOf('LingSpark/') >= 0;
   history.replaceState(null, '', '/');
-  // The Mac client's window names itself in the user agent (D-061).
-  if (navigator.userAgent.indexOf('LingSpark/') >= 0) {
+  if (inWindow) {
     document.body.classList.add('in-app');
     if (/Mac/.test(navigator.platform)) document.body.classList.add('mac-app');
     if (/Win/.test(navigator.platform)) document.body.classList.add('win-app');
+    if (/Linux|X11/.test(navigator.platform)) document.body.classList.add('linux-app');
+  }
+
+  /** The file manager each platform shows a revealed file in. */
+  function revealLabel() {
+    if (/Win/.test(navigator.platform)) return '在资源管理器中显示';
+    if (/Linux|X11/.test(navigator.platform)) return '在文件管理器中显示';
+    return '在访达中显示';
   }
 
   function api(route, body) {
@@ -485,7 +504,7 @@ label.row { cursor: pointer; }
       var openBtn = el('button', null, r.line > 0 ? '打开文件（第 ' + r.line + ' 行）' : '打开文件');
       openBtn.type = 'button';
       openBtn.onclick = function () { api('/api/open', { file: r.file }).catch(failed); };
-      var reveal = el('button', null, /Win/.test(navigator.platform) ? '在资源管理器中显示' : '在访达中显示');
+      var reveal = el('button', null, revealLabel());
       reveal.type = 'button';
       reveal.onclick = function () { api('/api/open', { file: r.file, reveal: true }).catch(failed); };
       act.append(openBtn, reveal);

@@ -8,6 +8,9 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '**/generated/**',
+      // Gitignored scratch space: a browser profile or a downloaded toolchain
+      // parked there is third-party code, not ours to lint.
+      '.lingspark-scratch/**',
       '**/*.config.ts',
       '**/*.config.js',
     ],

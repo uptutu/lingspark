@@ -13,8 +13,12 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "build:sea": "pnpm run build && pnpm --filter @lingspark/cli build:sea"
+    "test:scripts": "node packages/desktop/scripts/lib/icon.test.mjs",
+    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run test:scripts",
+    "build:sea": "pnpm run build && pnpm --filter @lingspark/cli build:sea",
+    "build:client": "pnpm run build:sea && pnpm --filter @lingspark/desktop dist",
+    "build:client:win": "pnpm run build && pnpm --filter @lingspark/desktop dist:win",
+    "build:client:linux": "pnpm run build:sea && pnpm --filter @lingspark/desktop dist:linux"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
