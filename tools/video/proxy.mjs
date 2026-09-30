@@ -8,8 +8,11 @@
 // Everything runs against a scratch HOME and data directory; nothing touches
 // the agents or the data of the machine it runs on.
 //
+// With --slow N both pages run N times slower (slowtime.js) so the recorder
+// can take frames at leisure; record.swift is told the same N.
+//
 // Usage: node tools/video/proxy.mjs --port 8790 --target http://127.0.0.1:<ui port> \
-//          --home <scratch home> --data <scratch data> --sea <lingspark binary>
+//          --home <scratch home> --data <scratch data> --sea <lingspark binary> [--slow 5]
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,7 +29,11 @@ const data = argOf('--data');
 const sea = argOf('--sea');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..', '..');
+const slow = Number(args.includes('--slow') ? argOf('--slow') : 1) || 1;
 const project = path.join(home, '方案');
+const SHIM = `<script>window.__SLOW=${slow};${readFileSync(path.join(here, 'slowtime.js'), 'utf8')}</script>`;
+/** Puts the time shim first in <head>, before any of the page's own scripts. */
+const withShim = (html) => html.replace(/<head>/iu, (m) => m + SHIM);
 mkdirSync(project, { recursive: true });
 
 const env = { ...process.env, HOME: home, LINGSPARK_DATA_DIR: data };
@@ -45,8 +52,8 @@ function hook(agent, event, payload) {
 
 const STATIC = {
   '/stage': [path.join(here, 'stage.html'), 'text/html; charset=utf-8'],
-  '/stage/installer.png': [path.join(repo, 'docs', 'guide', 'img', '0-installer.png'), 'image/png'],
-  '/stage/mark.png': [path.join(repo, 'docs', 'guide', 'img', 'mark.png'), 'image/png'],
+  '/stage/installer.png': [path.join(repo, 'docs', 'img', '0-installer.png'), 'image/png'],
+  '/stage/mark.png': [path.join(repo, 'docs', 'img', 'mark.png'), 'image/png'],
 };
 
 const json = (res, body) => {
@@ -66,7 +73,8 @@ createServer(async (req, res) => {
   const file = STATIC[url.pathname];
   if (file !== undefined) {
     res.writeHead(200, { 'content-type': file[1], 'cache-control': 'no-store' });
-    res.end(readFileSync(file[0]));
+    const body = readFileSync(file[0]);
+    res.end(file[1].startsWith('text/html') ? withShim(body.toString('utf8')) : body);
     return;
   }
   if (url.pathname === '/demo/write') {
@@ -86,8 +94,22 @@ createServer(async (req, res) => {
   const upstream = request(
     { host: target.hostname, port: target.port, path: req.url, method: req.method, headers: { ...req.headers, host: target.host } },
     (up) => {
-      res.writeHead(up.statusCode ?? 502, up.headers);
-      up.pipe(res);
+      const html = String(up.headers['content-type'] ?? '').startsWith('text/html');
+      if (!html) {
+        res.writeHead(up.statusCode ?? 502, up.headers);
+        up.pipe(res);
+        return;
+      }
+      // The setup page itself: the same shim, so its orb and timers slow too.
+      let body = '';
+      up.setEncoding('utf8');
+      up.on('data', (c) => (body += c));
+      up.on('end', () => {
+        const out = withShim(body);
+        const headers = { ...up.headers, 'content-length': Buffer.byteLength(out) };
+        res.writeHead(up.statusCode ?? 502, headers);
+        res.end(out);
+      });
     },
   );
   upstream.on('error', () => {

@@ -43,21 +43,17 @@ lingspark 以 **hook** 的形式挂在代理上，代理不需要"记得"调用�
 
 ## 安装
 
-从 [Releases](../../releases) 下载：
+目前支持 **Apple 芯片（M 系列）的 Mac**。从 [Releases](https://github.com/rytesdd/lingspark/releases) 下载：
 
-| | Mac | Windows |
-|---|---|---|
-| **客户端**（推荐） | `lingspark-…-mac-arm64.dmg`（M 系列芯片，下载约 26MB） | `lingspark-windows-x64.exe`，双击就打开窗口 |
-| 命令行版 | `lingspark-macos-arm64` / `lingspark-macos-x64` | 同上，也能在命令行里用 |
-
-Intel Mac 和 Linux 目前只有命令行版（Linux：`lingspark-linux-x64`）。都不需要另外装 Node。
+| | 文件 |
+|---|---|
+| **客户端**（推荐） | `lingspark-…-mac-arm64.dmg`，下载约 25MB，拖进"应用程序"即可 |
+| 命令行版 | `lingspark-macos-arm64`，不需要另外装 Node |
 
 Mac 客户端没有自带浏览器内核，窗口用的是系统自带的网页组件，所以装好只占约 100MB，其中绝大部分是
-检查程序自己的运行环境。Windows 上用系统自带的 Edge 打开同一个窗口。
+检查程序自己的运行环境。
 
-预览版还没有做代码签名，第一次打开会被系统拦一下：
-- **Mac**：第一次打开会提示"Apple 无法验证"，点"完成"（不要点"移到废纸篓"），然后到"系统设置 → 隐私与安全性"，在"安全性"一栏点"仍要打开"并输入开机密码。macOS 15 起右键 →"打开"已经不能跳过这一步。命令行版可以执行 `xattr -d com.apple.quarantine ./lingspark-macos-arm64`。
-- **Windows**：出现"Windows 已保护你的电脑"时，点"更多信息 → 仍要运行"。
+预览版还没有做代码签名，第一次打开会提示"Apple 无法验证"：点"完成"（不要点"移到废纸篓"），然后到"系统设置 → 隐私与安全性"，在"安全性"一栏点"仍要打开"并输入开机密码。macOS 15 起右键 →"打开"已经不能跳过这一步。命令行版可以执行 `xattr -d com.apple.quarantine ./lingspark-macos-arm64`。
 
 也可以从源码构建（需要 Node 22+ 和 pnpm 9）：
 
@@ -68,7 +64,7 @@ pnpm --filter @lingspark/desktop dist         # Mac 客户端（要装 Xcode 命
 
 ## 快速开始
 
-图文版的完整步骤见 [使用指南](docs/guide/index.html)。
+图文版的完整步骤和演示视频见 [使用指南网站](https://rytesdd.github.io/lingspark/)。
 
 下载后，两种方式任选一种，都是一步配好：自动找到你电脑上装过的代理并把检查接进去。之后代理写的每一篇
 Markdown 文档都会被检查，不用选文件夹。
@@ -118,11 +114,7 @@ doc_types:
 
 代价是审的人就是写的人。想要更客观，可以改成在后台另起一个模型来审（`auto`：谁写谁审，另起一个同款 Agent；或指定下表里的某一个）。在**用户级配置**里改：
 
-| 系统 | 用户级配置位置 |
-|---|---|
-| macOS | `~/Library/Application Support/lingspark/config.yaml` |
-| Windows | `%APPDATA%\lingspark\config.yaml` |
-| Linux | `~/.local/share/lingspark/config.yaml` |
+用户级配置位置：`~/Library/Application Support/lingspark/config.yaml`
 
 ```yaml
 judge:
@@ -190,7 +182,7 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 
 **还没做**：
 - 周报与自动回测：从你的修改意见里总结出候选规则，回测后交你审核上线
-- 自动更新、macOS 签名与公证、Windows 版实测
+- 自动更新、macOS 签名与公证、Intel Mac 与 Windows 版
 
 欢迎提 issue 和 PR，尤其是：你在真实文档里遇到的误报（附一段脱敏后的原文）、新代理的 hook 接入实测。
 

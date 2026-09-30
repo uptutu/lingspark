@@ -1,11 +1,11 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds the single-file executable on each platform,
-# after the same checks CI runs, and attaches them to a GitHub release.
-
+# Builds the Mac client and the single-file executable after the same checks
+# CI runs, and attaches them to a GitHub release. Run by hand for now:
+# releases are Mac-only (Apple silicon) and so far published from a local
+# build (D-072).
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 env:
   LINGSPARK_NO_NETWORK: '1'
@@ -21,17 +21,6 @@ jobs:
           - os: macos-14
             asset: lingspark-macos-arm64
             desktop: true
-          - os: macos-13
-            asset: lingspark-macos-x64
-            desktop: false
-          # On Windows the executable is the client: double-clicked, it opens
-          # its page in an Edge app window (D-061).
-          - os: windows-latest
-            asset: lingspark-windows-x64.exe
-            desktop: false
-          - os: ubuntu-latest
-            asset: lingspark-linux-x64
-            desktop: false
     steps:
       - uses: actions/checkout@v4
 

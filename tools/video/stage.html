@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>LingSpark 演示</title>
 <style>
-/* The demo video's stage, 1280x720 (tools/video). The window on the right is
-   the real setup page, driven by the script below; the terminal text is what
-   the real hook printed. */
+/* The demo video's stage, 1280x720 CSS pixels, recorded at 2x (tools/video).
+   The window on the right is the real setup page, driven by the script below;
+   the terminal shows what the real hook printed. */
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #07080a; color: #ececec;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; -webkit-font-smoothing: antialiased; }
@@ -14,49 +14,57 @@ body::before { content: ""; position: absolute; inset: 0;
   background: radial-gradient(900px 600px at 78% 45%, rgba(80, 170, 255, 0.10), transparent 60%),
               radial-gradient(700px 500px at 10% 90%, rgba(80, 255, 190, 0.05), transparent 60%); }
 
-.caption { position: absolute; left: 96px; top: 150px; width: 520px; transition: opacity 0.5s, transform 0.5s; }
+.caption { position: absolute; left: 96px; top: 130px; width: 540px; transition: opacity 0.5s, transform 0.5s; }
 .caption.out { opacity: 0; transform: translateY(8px); }
-.caption .step { font-size: 15px; color: #6fb8ff; letter-spacing: 1px; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
-.caption h1 { white-space: pre-line; font-size: 44px; line-height: 1.25; margin: 0 0 18px; font-weight: 650; letter-spacing: -0.5px; }
-.caption p { font-size: 20px; line-height: 1.7; color: #a9a9a9; margin: 0; }
+.caption .step { font-size: 16px; color: #6fb8ff; letter-spacing: 1px; margin-bottom: 14px; }
+.caption h1 { white-space: pre-line; font-size: 46px; line-height: 1.25; margin: 0 0 20px; font-weight: 650; letter-spacing: -0.5px; }
+.caption p { font-size: 21px; line-height: 1.75; color: #b4b4b4; margin: 0; }
 
-.window { position: absolute; left: 736px; top: 90px; width: 320px; height: 400px; transform-origin: 0 0; transform: scale(1.35);
+.window { position: absolute; left: 736px; top: 66px; width: 320px; height: 400px; transform-origin: 0 0; transform: scale(1.35);
   border-radius: 10px; overflow: hidden; background: #000;
   box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.14), 0 30px 80px rgba(0, 0, 0, 0.7); transition: opacity 0.6s; }
 .window iframe { width: 320px; height: 400px; border: 0; display: block; }
 .window .lights { position: absolute; left: 14px; top: 13px; display: flex; gap: 6px; pointer-events: none; }
 .window .lights i { width: 14px; height: 14px; border-radius: 7px; display: block; }
 
-.installer { position: absolute; left: 640px; top: 150px; width: 560px; border-radius: 12px; overflow: hidden; opacity: 0;
+.installer { position: absolute; left: 660px; top: 130px; width: 540px; border-radius: 12px; overflow: hidden; opacity: 0;
   box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.7); transition: opacity 0.6s; }
 .installer img { display: block; width: 100%; }
 
-.term { position: absolute; left: 80px; top: 120px; width: 560px; height: 480px; border-radius: 12px; background: #0d0e10; opacity: 0;
+.termhead { position: absolute; left: 80px; top: 70px; font-size: 16px; color: #6fb8ff; letter-spacing: 1px; opacity: 0; transition: opacity 0.5s; }
+.term { position: absolute; left: 80px; top: 104px; width: 580px; height: 470px; border-radius: 12px; background: #0d0e10; opacity: 0;
   box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.10), 0 30px 80px rgba(0, 0, 0, 0.6); transition: opacity 0.5s; overflow: hidden; }
-.term .head { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid #1c1d20; color: #7d7d7d; font-size: 13px; }
+.term .head { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid #1c1d20; color: #8a8a8a; font-size: 14px; }
 .term .head i { width: 11px; height: 11px; border-radius: 6px; display: block; background: #2e2f33; }
 .term .head span { margin-left: 8px; }
-.term .body { padding: 16px 18px; font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, "PingFang SC", monospace; white-space: pre-wrap; word-break: break-word; }
-.term .you { color: #e8e8e8; }
+.term .body { padding: 18px 20px; font: 16px/1.75 ui-monospace, SFMono-Regular, Menlo, "PingFang SC", monospace; white-space: pre-wrap; word-break: break-word; }
+.term .you { color: #f0f0f0; }
 .term .you::before { content: "› "; color: #6fb8ff; }
-.term .tool { color: #7d7d7d; }
-.term .ls { color: #ffb4b2; background: rgba(239, 83, 80, 0.08); border-left: 2px solid #ef5350; padding: 8px 12px; margin: 10px 0; display: block; border-radius: 0 6px 6px 0; }
+.term .tool { color: #8a8a8a; }
+.term .ls { color: #ffc2c0; background: rgba(239, 83, 80, 0.09); border-left: 3px solid #ef5350; padding: 10px 14px; margin: 12px 0; display: block; border-radius: 0 6px 6px 0; }
+.term .ls .tag { display: block; color: #ef8a87; font-size: 13px; margin-bottom: 4px; }
 .term .agent { color: #cfe7ff; }
-.term .ok { color: #7fe0a6; }
 
-.cursor { position: absolute; left: 0; top: 0; width: 22px; height: 22px; z-index: 10; opacity: 0; pointer-events: none;
+.sub { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); width: max-content; max-width: 1180px; white-space: nowrap; padding: 10px 24px; border-radius: 12px;
+  background: rgba(0, 0, 0, 0.72); box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.10); font-size: 24px; line-height: 1.5; color: #fff;
+  text-align: center; opacity: 0; transition: opacity 0.35s; z-index: 15; }
+.sub.on { opacity: 1; }
+.sub b { color: #ff9a97; font-weight: 600; }
+
+.cursor { position: absolute; left: 0; top: 0; width: 24px; height: 24px; z-index: 10; opacity: 0; pointer-events: none;
   transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.2, 1), opacity 0.3s; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 .cursor.click { animation: press 0.25s; }
 @keyframes press { 50% { scale: 0.8; } }
 
 .end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
   background: #07080a; opacity: 0; transition: opacity 0.8s; z-index: 20; }
-.end img { width: 72px; height: 72px; }
-.end h1 { font-size: 46px; margin: 0; }
-.end p { font-size: 20px; color: #a9a9a9; margin: 0; }
+.end img { width: 76px; height: 76px; }
+.end h1 { font-size: 48px; margin: 0; }
+.end p { font-size: 22px; color: #b4b4b4; margin: 0; }
 .end .chips { display: flex; gap: 12px; margin-top: 6px; }
-.end .chips span { font-size: 16px; padding: 6px 16px; border: 1px solid #2a2a2a; border-radius: 999px; color: #cfcfcf; }
-.badge { position: absolute; right: 24px; bottom: 18px; font-size: 12px; color: #4d4d4d; }
+.end .chips span { font-size: 17px; padding: 7px 18px; border: 1px solid #2a2a2a; border-radius: 999px; color: #d4d4d4; }
+.end .url { font-size: 18px; color: #6fb8ff; margin-top: 8px; }
+.badge { position: absolute; right: 24px; bottom: 14px; font-size: 12px; color: #4d4d4d; }
 </style>
 </head>
 <body>
@@ -66,15 +74,18 @@ body::before { content: ""; position: absolute; inset: 0;
   <iframe id="app" title="LingSpark"></iframe>
   <span class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#3b3b3b"></i></span>
 </div>
+<div class="termhead" id="termHead">第 4 步 · 照常让 Agent 写文档</div>
 <div class="term" id="term"><div class="head"><i></i><i></i><i></i><span>Claude Code · 方案</span></div><div class="body" id="termBody"></div></div>
+<div class="sub" id="sub"></div>
 <svg class="cursor" id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 9.5-6.6 1.3 3.9 7.4-2.9 1.5-3.9-7.4L4 19z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>
 <div class="end" id="end">
   <img src="/stage/mark.png" alt="">
   <h1>LingSpark · 灵光</h1>
-  <p>让 AI Agent 写的中文文档，先过一遍逻辑检查</p>
-  <div class="chips"><span>一个开关，零配置</span><span>文档不上传</span><span>开源</span></div>
+  <p>Agent 写的文档，先替你检查一遍</p>
+  <div class="chips"><span>打开开关就能用</span><span>本地运行，文档不上传</span><span>开源</span></div>
+  <div class="url">github.com/rytesdd/lingspark</div>
 </div>
-<div class="badge">画面中的窗口和检查结果均由真实的 LingSpark 生成 · 演示数据</div>
+<div class="badge">画面中的窗口和检查结果由真实的 LingSpark 生成 · 演示数据</div>
 
 <script>
 (function () {
@@ -82,7 +93,7 @@ body::before { content: ""; position: absolute; inset: 0;
   var $ = function (id) { return document.getElementById(id); };
   var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
   var frame = $('app'), doc = null;
-  var SCALE = 1.35, WIN = { x: 736, y: 90 };
+  var SCALE = 1.35, WIN = { x: 736, y: 66 };
 
   function caption(step, title, text) {
     var c = $('cap');
@@ -92,6 +103,13 @@ body::before { content: ""; position: absolute; inset: 0;
       c.classList.remove('out');
     });
   }
+  // The subtitle line; html so a key phrase can be marked.
+  function sub(html) {
+    var s = $('sub');
+    if (!html) { s.classList.remove('on'); return sleep(350); }
+    s.classList.remove('on');
+    return sleep(300).then(function () { s.innerHTML = html; s.classList.add('on'); });
+  }
   function q(sel) { return doc.querySelector(sel); }
   function waitFor(sel, ms) {
     var until = Date.now() + (ms || 8000);
@@ -99,7 +117,6 @@ body::before { content: ""; position: absolute; inset: 0;
       (function poll() { var e = q(sel); if (e || Date.now() > until) resolve(e); else setTimeout(poll, 100); })();
     });
   }
-  // The cursor, moved to an element inside the app window.
   function pointAt(el, dx, dy) {
     var r = el.getBoundingClientRect(), c = $('cursor');
     c.style.opacity = 1;
@@ -122,13 +139,12 @@ body::before { content: ""; position: absolute; inset: 0;
   function post(url, body) {
     return fetch(url, { method: 'POST', body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
   }
-  // The terminal: lines appear, the user's typed.
   function line(cls, text, typed) {
     var e = document.createElement('div'); e.className = cls; $('termBody').appendChild(e);
     if (!typed) { e.textContent = text; return sleep(250); }
     var i = 0;
     return new Promise(function (resolve) {
-      (function tick() { e.textContent = text.slice(0, ++i); if (i < text.length) setTimeout(tick, 45); else resolve(); })();
+      (function tick() { e.textContent = text.slice(0, ++i); if (i < text.length) setTimeout(tick, 55); else resolve(); })();
     });
   }
 
@@ -136,74 +152,93 @@ body::before { content: ""; position: absolute; inset: 0;
   var FIXED = DOC.replace('本季度日活目标是 50 万', '本季度日活目标：待确认').replace('经过评估，本季度日活目标是 80 万', '经过评估，本季度日活目标：待确认');
 
   async function run() {
-    // 0. Title
-    $('installer').style.opacity = 0;
-    await caption('LingSpark · 灵光', 'AI 写的文档，\n先替你查一遍逻辑', '数字对不上、引用不存在、空话套话、前后矛盾——在 Agent 交给你之前拦下来。');
-    await sleep(3500);
+    // Title
+    await caption('LingSpark · 灵光', 'Agent 写的文档，\n先替你检查一遍', '数字前后对不上、引用了不存在的章节、说法自相矛盾——在文档交到你手上之前，把问题拦下来。');
+    await sleep(4800);
 
     // 1. Install
     $('win').style.opacity = 0;
     $('installer').style.opacity = 1;
-    await caption('第 1 步', '下载，拖进「应用程序」', '安装包约 25MB，不用装任何别的东西。');
-    await sleep(3800);
+    await caption('第 1 步 · 安装', '拖进「应用程序」', '下载约 25MB 的安装包，打开后把 LingSpark 拖进「应用程序」，就装好了。');
+    await sleep(4600);
     $('installer').style.opacity = 0;
     $('win').style.opacity = 1;
 
     // 2. Switch on
-    await caption('第 2 步', '打开开关', '灵光自动找到你装过的 Agent，一键接入。不用选文件夹，不用填 Key。');
-    await sleep(800);
+    await caption('第 2 步 · 开启', '打开这个开关', '灵光会自动找到你电脑上的 Claude Code、Codex、Cursor、WorkBuddy，把检查接进去。不用选文件夹，也不用填任何 Key。');
+    await sleep(1800);
     var sw = await waitFor('#main');
+    await sub('点一下开关');
     await pointAt(sw);
     await click(sw);
-    await sleep(1600);
+    await sub('4 个 Agent 都接上了');
+    await sleep(2600);
+    await sub('');
 
     // 3. Restart the agents
-    await caption('第 3 步', '重开你的 Agent', '右下角亮红灯，说明还有 Agent 没生效。重开后发一条消息，灯就变绿。');
+    await caption('第 3 步 · 重开 Agent', '把 Agent 重开一次', 'Agent 只在启动时读取设置。右下角亮红灯，说明还有 Agent 没生效；把它退出重开、发一条消息，灯就变绿。');
     var light = await waitFor('#agentsLine');
+    await sleep(1200);
+    await sub('鼠标移到右下角，能看到每个 Agent 还差哪一步');
     await pointAt(light, 0.7, 0.5);
     forceHover(true);
-    await sleep(2200);
+    await sleep(3200);
+    await sub('逐个重开之后，<b>红灯变成绿灯</b>');
     var agents = ['claude-code', 'cursor', 'workbuddy', 'codex'];
-    for (var i = 0; i < agents.length; i++) { await post('/demo/hello', { agent: agents[i] }); await sleep(700); }
-    await sleep(2400);
+    for (var i = 0; i < agents.length; i++) { await post('/demo/hello', { agent: agents[i] }); await sleep(900); }
+    await sleep(2600);
     forceHover(false);
     hideCursor();
-    await sleep(800);
+    await sub('');
 
     // 4. Write as usual
     $('cap').classList.add('out');
+    await sleep(400);
+    $('termHead').style.opacity = 1;
     $('term').style.opacity = 1;
-    await sleep(600);
+    await sub('你照常让 Agent 写一份方案');
+    await sleep(500);
     await line('you', '帮我写一份会员拉新方案', true);
-    await sleep(600);
-    await line('tool', '● Write 方案/会员拉新方案.md');
+    await sleep(700);
+    await line('tool', '● 写入 方案/会员拉新方案.md');
     var r = await post('/demo/write', { name: '会员拉新方案.md', content: DOC, agent: 'claude-code' });
     await sleep(500);
     var ls = document.createElement('div'); ls.className = 'ls';
-    ls.textContent = r.text.split('\n\n如果你认为')[0].trim();
+    var tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = 'LingSpark 拦下了这篇文档：';
+    ls.appendChild(tag);
+    ls.appendChild(document.createTextNode(r.text.split('\n\n如果你认为')[0].replace(/^lingspark 在 .*?：\s*/u, '').trim()));
     $('termBody').appendChild(ls);
-    await sleep(3200);
-    await line('tool', '● Update 方案/会员拉新方案.md');
+    await sub('刚写完，灵光就发现：同一个指标，前面写 <b>50 万</b>，后面写 <b>80 万</b>');
+    await sleep(4600);
+    await sub('问题被交回给 Agent，它必须先处理，这一轮才能结束');
+    await sleep(3800);
+    await line('tool', '● 修改 方案/会员拉新方案.md');
     await post('/demo/write', { name: '会员拉新方案.md', content: FIXED, agent: 'claude-code' });
     await sleep(400);
-    await line('agent', '文档里本季度日活目标前后写了 50 万和 80 万，我不确定哪个对，已把两处都改成「待确认」。请告诉我正确的目标值。');
-    await sleep(3600);
+    await line('agent', '前后写了 50 万和 80 万两个数，我不确定哪个对，已把两处都改成「待确认」，请你告诉我正确的目标值。');
+    await sub('Agent 拿不准哪个数对，就把两处都标成<b>「待确认」</b>，留给你拍板');
+    await sleep(4800);
+    await sub('');
 
     // 5. What was stopped
     $('term').style.opacity = 0;
-    await caption('第 4 步', '看灵光拦下了什么', '首页记着今天和累计拦下的问题。点进去，能看到原文、标红的片段和处理状态。');
-    await sleep(2200);
+    $('termHead').style.opacity = 0;
+    await caption('第 5 步 · 查看记录', '拦下了什么，\n一目了然', '首页记着今天和累计拦下的问题。点进去，能看到原文、标红的问题片段，以及后来改好了没有。');
+    await sleep(2000);
     var link = await waitFor('.stat-link');
+    await sub('点「拦下 1 处问题」');
     if (link) { await pointAt(link); await click(link); }
     var card = await waitFor('.card');
     await sleep(900);
+    await sub('原文里出问题的片段标红；Agent 改掉之后，状态变成<b>「已处理」</b>');
     if (card) { await pointAt(card, 0.5, 0.3); await click(card); }
-    await sleep(3800);
+    await sleep(4800);
     hideCursor();
+    await sub('');
 
     // End
     $('end').style.opacity = 1;
-    await sleep(4000);
+    await sleep(4500);
     window.__done = true;
   }
 
