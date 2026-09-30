@@ -53,7 +53,7 @@ internal static class Shell
     private static string origin = string.Empty;
     private static string serverError = string.Empty;
 
-    /// <summary>The tray entry the window parks in when it leaves the screen (D-084).</summary>
+    /// <summary>The tray entry the window parks in when it leaves the screen (D-096).</summary>
     private static NotifyIcon tray;
 
     /// <summary>The one window, kept for the menu builders that run on poll threads.</summary>
@@ -62,7 +62,7 @@ internal static class Shell
     /// <summary>
     /// The token the server handed out in the address it printed. Every API call
     /// carries it in a header, and the server rejects a call without it -- the
-    /// shell is the page's own, so it may drive the same buttons (D-086).
+    /// shell is the page's own, so it may drive the same buttons (D-098).
     /// </summary>
     private static string serverToken = string.Empty;
 
@@ -87,7 +87,7 @@ internal static class Shell
     /// a thread and brings its window back. A window hidden to the tray cannot
     /// be brought back with ShowWindow alone -- it stays out of the task bar
     /// until its own thread says otherwise -- so the poke replaces the old
-    /// process-walk-and-ShowWindow for the hidden case (D-084).
+    /// process-walk-and-ShowWindow for the hidden case (D-096).
     /// </summary>
     private const string ShowSignal = @"Local\LingSpark.Client.Show";
 
@@ -196,7 +196,7 @@ internal static class Shell
         // would show. A fixed frame does not draw the maximize button and does
         // not let the frame be dragged -- a greyed-out one is what a sizable
         // border with MaximizeBox=false leaves behind, which reads as broken
-        // (D-082 tried that; D-084 settled the size for good).
+        // (D-082 tried that; D-096 settled the size for good).
         form.FormBorderStyle = FormBorderStyle.FixedSingle;
         form.MaximizeBox = false;
         // The minimize button hides the window to the tray instead, see
@@ -224,7 +224,7 @@ internal static class Shell
             // program -- which is what it looked like before it had one.
         }
 
-        // The tray is where the window lives when it is not on screen (D-084):
+        // The tray is where the window lives when it is not on screen (D-096):
         // closing or minimizing does not quit, it parks the window here and
         // the server keeps running. The icon is the same star; with none, the
         // entry is a blank slot but the menu still works.
@@ -233,12 +233,12 @@ internal static class Shell
         if (star != null) tray.Icon = star;
         tray.Text = "LingSpark · 灵光";
         // This first menu is what a right-click answers before the server has
-        // said anything; the agent rows land with the first /api/state (D-086).
+        // said anything; the agent rows land with the first /api/state (D-098).
         tray.ContextMenuStrip = StaticMenu(form);
         tray.DoubleClick += delegate { RestoreFromTray(form); };
         // This is the line that puts the star in the corner: a NotifyIcon is
         // born invisible, and without this it lives for the whole session
-        // showing nothing -- the exact bug the first tray build shipped (D-085).
+        // showing nothing -- the exact bug the first tray build shipped (D-097).
         // Visible from the start, not only when the window hides: the tray is
         // also the handle on the app when the window is already open.
         tray.Visible = true;
@@ -309,7 +309,7 @@ internal static class Shell
         // reads end-of-input and exits (D-061).
         form.FormClosing += delegate(object sender, FormClosingEventArgs e)
         {
-            // The cross parks the window in the tray instead of quitting (D-084,
+            // The cross parks the window in the tray instead of quitting (D-096,
             // the task-bar minimize of D-083 revised): the server keeps running
             // with no window at all, and the ways out are the page's "完成" and
             // the tray's "退出". Only a close the user asked for is intercepted --
@@ -342,7 +342,7 @@ internal static class Shell
 
     // MARK: the tray
 
-    /// <summary>Window off the screen, server still running: the parked state (D-084).</summary>
+    /// <summary>Window off the screen, server still running: the parked state (D-096).</summary>
     private static void HideToTray(Form form)
     {
         form.WindowState = FormWindowState.Normal;
@@ -379,7 +379,7 @@ internal static class Shell
         public ToolStripMenuItem Item;
     }
 
-    /// <summary>显示 / 退出: the part of the menu that never changes (D-086).</summary>
+    /// <summary>显示 / 退出: the part of the menu that never changes (D-098).</summary>
     private static ContextMenuStrip StaticMenu(Form form)
     {
         var menu = new ContextMenuStrip();
@@ -556,7 +556,7 @@ internal static class Shell
         }
     }
 
-    /// <summary>The agents array of an /api/state body, nothing else read (D-086).</summary>
+    /// <summary>The agents array of an /api/state body, nothing else read (D-098).</summary>
     private static List<AgentItem> ParseAgents(string json)
     {
         var root = ParseJson(json) as Dictionary<string, object>;
@@ -795,7 +795,7 @@ internal static class Shell
         Uri parsed;
         if (!Uri.TryCreate(url, UriKind.Absolute, out parsed)) return;
         origin = parsed.GetLeftPart(UriPartial.Authority);
-        // The same line carries the token every API call needs (D-086). It is a
+        // The same line carries the token every API call needs (D-098). It is a
         // query parameter, not part of the origin the navigation filter checks.
         var token = Regex.Match(parsed.Query, @"(?:\?|&)t=([^&]+)");
         if (token.Success) serverToken = token.Groups[1].Value;
@@ -1013,7 +1013,7 @@ internal static class Shell
             // The main road: the running instance is waiting on ShowSignal and
             // restores its own window -- which matters because a window hidden
             // to the tray has no task-bar entry and a bare ShowWindow from here
-            // would bring back a window that still has none (D-084).
+            // would bring back a window that still has none (D-096).
             EventWaitHandle.OpenExisting(ShowSignal).Set();
         }
         catch (Exception)

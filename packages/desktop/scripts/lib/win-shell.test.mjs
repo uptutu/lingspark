@@ -101,7 +101,7 @@ check('the window brings the icon that was stamped into the program', () => {
   // The title bar, the task bar and the tray draw the window's icon, not the
   // file's: a form with none of its own falls back to the system application
   // icon, which is a white window in four colours. rcedit's star was in the
-  // program all along and nothing ever read it back out (D-082); D-084 parks
+  // program all along and nothing ever read it back out (D-082); D-096 parks
   // the same star in the tray.
   assert.match(shellSource, /Icon\.ExtractAssociatedIcon\(Application\.ExecutablePath\)/);
   assert.match(shellSource, /form\.Icon = star/);
@@ -126,7 +126,7 @@ check("the window's own title bar is painted in the dark the page is drawn in", 
 check('the window is a fixed size: no maximize button, no dragging it bigger', () => {
   // The page is one 336x440 card (D-075); enlarging shows nothing. A sizable
   // border with MaximizeBox=false leaves a greyed-out button that reads as
-  // broken (D-082), so the size is fixed by the frame itself instead (D-084):
+  // broken (D-082), so the size is fixed by the frame itself instead (D-096):
   // the button is not drawn, and the frame cannot be dragged.
   assert.match(shellSource, /form\.FormBorderStyle = FormBorderStyle\.FixedSingle/);
   assert.match(shellSource, /form\.MaximizeBox = false;/);
@@ -136,12 +136,12 @@ check('the window is a fixed size: no maximize button, no dragging it bigger', (
 check('closing or minimizing parks the window in the tray, running in the background', () => {
   // Not a task-bar minimize (D-083, revised): the window leaves the screen
   // entirely -- no task-bar entry, server keeps running. The user asked for
-  // exactly this: a client that lives in the tray (D-084).
+  // exactly this: a client that lives in the tray (D-096).
   assert.match(shellSource, /new NotifyIcon/);
   assert.match(shellSource, /form\.Hide\(\)/);
   assert.match(shellSource, /form\.ShowInTaskbar = false/);
   // Born invisible: without this line the icon exists for the whole session
-  // and never shows -- shipped exactly that way once (D-085).
+  // and never shows -- shipped exactly that way once (D-097).
   assert.match(shellSource, /tray\.Visible = true;/);
   // Only a close the user asked for is intercepted; the programmatic closes
   // (self-test, server exit, Application.Exit) must keep their old path.
@@ -155,7 +155,7 @@ check('closing or minimizing parks the window in the tray, running in the backgr
 check('a second launch brings the hidden window back through the tray owner', () => {
   // Hide() takes the window out of the task bar, so ShowWindow from the second
   // instance cannot fully restore it; the running instance has to do it
-  // itself, woken by a named event the second instance pokes (D-084).
+  // itself, woken by a named event the second instance pokes (D-096).
   assert.match(shellSource, /EventWaitHandle\.OpenExisting\(ShowSignal\)\.Set\(\)/);
   assert.match(shellSource, /new EventWaitHandle\(false, EventResetMode\.AutoReset, ShowSignal\)/);
   assert.match(shellSource, /RestoreFromTray\(form\)/);
@@ -163,7 +163,7 @@ check('a second launch brings the hidden window back through the tray owner', ()
 
 check('the tray menu drives the same API the page does: agent switches and status', () => {
   // Right-clicking the star has to show the page's own switches and states,
-  // not a second, dumber source of truth (D-086). Every route here is one the
+  // not a second, dumber source of truth (D-098). Every route here is one the
   // page calls; the token is the one the server printed in its address.
   assert.match(shellSource, /Post\("\/api\/state"/);
   assert.match(shellSource, /"\/api\/agent"/);
@@ -174,7 +174,7 @@ check('the tray menu drives the same API the page does: agent switches and statu
   assert.match(shellSource, /&\)t=\(\[\^&\]\+\)/);
   // A row click flips the switch the way the page does: {id, on}.
   assert.ok(
-    shellSource.includes('"{\\"id\\":\\"" + id + \\"\\",\\"on\\":'),
+    shellSource.includes('"{\\"id\\":\\"" + id + "\\",\\"on\\":'),
     'the toggle body is the page\'s own {id, on} shape',
   );
   // The state the menu shows is polled, and only one question is in flight.
