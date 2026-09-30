@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LingSpark 使用指南</title>
+<meta name="description" content="LingSpark · 灵光：让 AI Agent 写的中文文档先过一遍逻辑检查。从安装到看懂拦截记录的完整步骤。">
+<style>
+:root {
+  --bg: #ffffff; --text: #1a1a1a; --muted: #5f5f5f; --faint: #8a8a8a; --line: #e6e6e6; --raise: #f6f6f6;
+  --accent: #0a84ff; --ok: #1f9d55; --bad: #d64545; --code: #0f0f0f; --codetext: #e8e8e8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0b; --text: #ececec; --muted: #a3a3a3; --faint: #737373; --line: #232323; --raise: #141414;
+    --accent: #4da3ff; --ok: #4cd07d; --bad: #ef5350; --code: #000000; --codetext: #e8e8e8;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0b0b; --text: #ececec; --muted: #a3a3a3; --faint: #737373; --line: #232323; --raise: #141414;
+  --accent: #4da3ff; --ok: #4cd07d; --bad: #ef5350; --code: #000000; --codetext: #e8e8e8;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+main { max-width: 760px; margin: 0 auto; padding: 48px 16px 96px; }
+header { margin-bottom: 40px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+.brand img { width: 22px; height: 22px; }
+h1 { font-size: 32px; line-height: 1.3; margin: 0 0 12px; letter-spacing: -0.3px; }
+.lead { color: var(--muted); font-size: 17px; margin: 0; }
+.agents { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.agents span { font-size: 13px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+nav { border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; margin: 0 0 48px; font-size: 14px; }
+nav b { display: block; font-size: 13px; color: var(--faint); font-weight: 500; margin-bottom: 4px; }
+nav ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+a { color: var(--accent); }
+nav a { color: var(--text); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+section { margin: 0 0 56px; scroll-margin-top: 24px; }
+h2 { font-size: 22px; margin: 0 0 14px; display: flex; align-items: baseline; gap: 10px; }
+h2 .n { font-size: 13px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
+h3 { font-size: 17px; margin: 28px 0 8px; }
+p { margin: 0 0 14px; }
+ul, ol { padding-left: 22px; margin: 0 0 14px; }
+li { margin: 4px 0; }
+.muted { color: var(--muted); }
+kbd, code { font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--raise); border: 1px solid var(--line);
+  border-radius: 5px; padding: 1px 6px; }
+figure { margin: 0; }
+.shot { display: flex; gap: 28px; align-items: flex-start; margin: 18px 0 8px; }
+.shot .text { flex: 1; min-width: 0; }
+.win { --s: 0.875; width: 280px; flex-shrink: 0; position: relative; border-radius: 12px; overflow: hidden; background: #000;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.28); }
+.win img { display: block; width: 100%; height: auto; }
+/* The window buttons the screenshot leaves out, where macOS draws them. */
+.win::before { content: ""; position: absolute; left: calc(14px * var(--s)); top: calc(13px * var(--s));
+  width: calc(14px * var(--s)); height: calc(14px * var(--s)); border-radius: 50%;
+  background: #ff5f57; box-shadow: calc(20px * var(--s)) 0 0 #febc2e, calc(40px * var(--s)) 0 0 #3b3b3b; }
+.video { margin: 0 0 40px; }
+.video video { display: block; width: 100%; border-radius: 12px; background: #000; box-shadow: 0 0 0 1px var(--line); }
+.wide { margin: 18px 0 8px; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); }
+.wide img { display: block; width: 100%; height: auto; }
+figcaption { font-size: 13px; color: var(--faint); margin-top: 8px; }
+.callout { border-left: 3px solid var(--accent); background: var(--raise); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 15px; }
+.callout.warn { border-left-color: #e0a100; }
+.callout b { font-weight: 600; }
+.term { background: var(--code); color: var(--codetext); border-radius: 10px; padding: 16px 18px; margin: 16px 0;
+  font: 13.5px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", monospace; white-space: pre-wrap; word-break: break-word;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.term .who { color: #7d7d7d; display: block; margin-bottom: 6px; font-size: 12px; }
+.term .hl { color: #ff8a86; }
+.term .agent { color: #9fd4ff; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 12px 0 16px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--faint); font-weight: 500; font-size: 13px; }
+th:first-child, td:first-child { white-space: nowrap; }
+details { border-bottom: 1px solid var(--line); padding: 12px 0; }
+summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; color: var(--faint); font-weight: 400; }
+details[open] summary::after { content: "–"; }
+details p, details ul { margin: 10px 0 4px; color: var(--muted); font-size: 15px; }
+footer { color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); padding-top: 20px; }
+@media (max-width: 640px) {
+  main { padding-top: 32px; }
+  h1 { font-size: 26px; }
+  nav ol { columns: 1; }
+  .shot { flex-direction: column; gap: 14px; }
+  .win { --s: 1; width: 320px; max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><img src="img/mark.png" alt="">LingSpark · 灵光</div>
+    <h1>使用指南</h1>
+    <p class="lead">Agent 每写完一篇中文文档，灵光先替你检查一遍：前后数字对不上、引用了不存在的章节、空话套话、指代不明……发现了就让 Agent 当场改掉，改不了的标出来留给你拍板。</p>
+    <div class="agents"><span>Claude Code</span><span>Codex</span><span>Cursor</span><span>WorkBuddy</span></div>
+  </header>
+
+  <figure class="video">
+    <video src="lingspark-demo.mp4" controls playsinline preload="metadata"></video>
+    <figcaption>48 秒看完整个流程。画面中的窗口和检查结果都由真实的 LingSpark 生成，数据为演示用例。</figcaption>
+  </figure>
+
+  <nav>
+    <b>目录</b>
+    <ol>
+      <li><a href="#install">下载安装</a></li>
+      <li><a href="#gatekeeper">第一次打开被拦住</a></li>
+      <li><a href="#switch-on">打开开关</a></li>
+      <li><a href="#restart">重开你的 Agent</a></li>
+      <li><a href="#use">照常让 Agent 写文档</a></li>
+      <li><a href="#records">看灵光拦下了什么</a></li>
+      <li><a href="#settings">设置</a></li>
+      <li><a href="#faq">常见问题</a></li>
+    </ol>
+  </nav>
+
+  <section id="install">
+    <h2><span class="n">01</span>下载安装</h2>
+    <p>到项目的 <a href="https://github.com/rytesdd/lingspark/releases">Releases 页面</a>下载安装包：</p>
+    <ul>
+      <li><b>Mac（M 系列芯片）</b>：<code>lingspark-…-mac-arm64.dmg</code>，约 25MB。双击打开，把 LingSpark 拖进「应用程序」。</li>
+      <li><b>Windows</b>：<code>lingspark-windows-x64.exe</code>，双击就会打开灵光的窗口。<span class="muted">（Windows 版还在测试中）</span></li>
+      <li><b>Intel Mac、Linux</b>：暂时只有命令行版，见项目首页的说明。</li>
+    </ul>
+    <figure class="wide"><img src="img/0-installer.png" alt="安装窗口：左边是 LingSpark，右边是应用程序，中间一个箭头" loading="lazy"></figure>
+    <figcaption>打开安装包看到的窗口：把左边的 LingSpark 拖到右边的「应用程序」。</figcaption>
+  </section>
+
+  <section id="gatekeeper">
+    <h2><span class="n">02</span>第一次打开被拦住</h2>
+    <p>预览版还没有苹果开发者签名。从网上、聊天软件下载的安装包，第一次打开时 macOS 会提示「Apple 无法验证"LingSpark"是否包含恶意软件」。</p>
+    <ol>
+      <li>在提示里点<b>「完成」</b>。<span class="muted">不要点「移到废纸篓」。</span></li>
+      <li>打开<b>「系统设置 → 隐私与安全性」</b>，往下拉到「安全性」。</li>
+      <li>看到「已阻止 LingSpark」，点旁边的<b>「仍要打开」</b>，输入开机密码。</li>
+    </ol>
+    <div class="callout warn">macOS 15 起，「右键 → 打开」已经不能跳过这一步，只能走系统设置。这个步骤只需要做一次。</div>
+  </section>
+
+  <section id="switch-on">
+    <h2><span class="n">03</span>打开开关</h2>
+    <div class="shot">
+      <figure class="win"><img src="img/1-first-open.png" alt="首页：未开启，下方一个开关，右下角显示待连接" loading="lazy"></figure>
+      <div class="text">
+        <p>打开 LingSpark，首页只有一个开关。</p>
+        <p><b>把它打开就配置完了。</b>灵光会自动找到你电脑上装过的 Agent（Claude Code、Codex、Cursor、WorkBuddy），把检查接进去。不用选文件夹、不用填 API Key、不用登录任何账号。</p>
+        <p class="muted">如果开关是灰的，说明没找到这四个 Agent 中的任何一个。装好并至少用过一次后，再打开灵光。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="restart">
+    <h2><span class="n">04</span>重开你的 Agent</h2>
+    <div class="shot">
+      <figure class="win"><img src="img/2-just-enabled.png" alt="右下角红灯，悬停后列出每个 Agent 还差什么" loading="lazy"></figure>
+      <div class="text">
+        <p>Agent 只在启动时读取配置，所以刚接入的 Agent 要<b>完全退出（⌘Q）再打开一次</b>才会生效。</p>
+        <p>右下角的灯告诉你进度：</p>
+        <ul>
+          <li><b style="color:var(--bad)">红灯</b>：还有 Agent 没生效。鼠标移上去，能看到每一个还差什么。</li>
+          <li><b style="color:var(--ok)">绿灯</b>：都在工作了。重开后在 Agent 里随便发一条消息，对应的灯就会变绿。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout"><b>用 Codex 的还要多做一步：</b>在 Codex 里输入 <code>/hooks</code>，把 LingSpark 的两个挂钩标为「信任」。没信任之前，Codex 会不声不响地跳过它们，灯会一直是红的。</div>
+  </section>
+
+  <section id="use">
+    <h2><span class="n">05</span>照常让 Agent 写文档</h2>
+    <p>不需要改任何习惯。Agent 写出的每一篇 Markdown 文档，灵光都会在两个时间点检查：</p>
+    <table>
+      <tr><th>什么时候</th><th>查什么</th><th>发现问题会怎样</th></tr>
+      <tr><td>刚写完一篇</td><td>数字前后对不上、引用了不存在的章节或表格、日期矛盾等，有明确对错的问题</td><td>当场把问题告诉 Agent，让它改</td></tr>
+      <tr><td>这一轮快结束时</td><td>空话套话、指代不明、结论没依据、几篇文档之间说法矛盾等，需要读懂意思的问题</td><td>请 Agent 按灵光给的标准自己审一遍：有把握的直接改，拿不准的标成「待确认」并问你</td></tr>
+    </table>
+    <p>Agent 那边看到的是这样一段话，之后它会自己去改：</p>
+    <div class="term"><span class="who">Agent 收到的检查结果</span>lingspark 在 会员拉新方案.md 中发现 1 个问题，请修改后再继续：
+
+1. 第 5 行 [D101] <span class="hl">「本季度日活目标」在第 3 行是 50万，这里是 80万。</span>建议：确认哪个取值是对的，然后统一全文。
+
+如果你认为某条是误报，向用户说明理由，不要自行添加 lingspark-disable 注释。</div>
+    <div class="term"><span class="who">Agent 随后的回复（示例）</span><span class="agent">文档里本季度日活目标前后写了 50 万和 80 万两个数，我不确定哪个是对的，已把两处都改成「待确认」。请告诉我正确的目标值，我再统一补上。</span></div>
+    <p class="muted">灵光自己不调用任何模型，也不上传你的文档：需要读懂意思的检查，是由正在写文档的那个 Agent 在自己的对话里完成的。</p>
+  </section>
+
+  <section id="records">
+    <h2><span class="n">06</span>看灵光拦下了什么</h2>
+    <div class="shot">
+      <figure class="win"><img src="img/3-working.png" alt="首页：今天查了几篇、拦下几处问题；累计的数字在下面" loading="lazy"></figure>
+      <div class="text">
+        <p>首页中间是统计：上面一行是<b>今天</b>，下面一行是<b>累计</b>。</p>
+        <p>点「拦下 N 处问题」就能看到具体拦下了哪些说法。点今天那行只看今天的，点累计那行看全部。</p>
+        <p>中间的光球开着时会慢慢变换形态；灵光正在检查文档时，它会停在「搜索」的样子。</p>
+      </div>
+    </div>
+    <div class="shot">
+      <figure class="win"><img src="img/4-records.png" alt="拦截记录：每条显示原文、标红的问题片段、原因和处理状态" loading="lazy"></figure>
+      <div class="text">
+        <p>每一条记录包括：</p>
+        <ul>
+          <li>问题类型，以及是「写入时拦下」还是「结束时自审」发现的</li>
+          <li>原文那一句，<b>出问题的片段标红</b></li>
+          <li>为什么拦、哪个文件、哪个 Agent</li>
+          <li>状态：<b style="color:var(--ok)">已处理</b>或<b style="color:#c98a00">仍在文中</b></li>
+        </ul>
+        <p>点开一条能看到修改建议，还可以直接打开那个文件。「仍在文中」的，通常是 Agent 拿不准、留给你判断的，值得看一眼。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings">
+    <h2><span class="n">07</span>设置</h2>
+    <div class="shot">
+      <figure class="win"><img src="img/5-settings.png" alt="设置页：四个 Agent 各自一个开关" loading="lazy"></figure>
+      <div class="text">
+        <p>点右上角的滑杆图标进入设置。每个 Agent 有单独的开关：不想让某个 Agent 被检查，关掉它就行，其他的不受影响。</p>
+        <p>首页的总开关关掉，等于把灵光从所有 Agent 里断开。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2><span class="n">08</span>常见问题</h2>
+    <details>
+      <summary>灵光会检查哪些文件？</summary>
+      <p>Agent 写出来的 Markdown 文档（<code>.md</code>），不管写在哪个文件夹。不检查你们的对话回复，也不检查 Agent 自己的记忆和指令文件（比如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、各 Agent 的配置目录）。Agent 用终端命令写的文件也会被检查。</p>
+    </details>
+    <details>
+      <summary>我的文档会被上传吗？</summary>
+      <p>不会。确定性的检查在你电脑上完成；需要读懂意思的检查，由你正在用的 Agent 在它自己的对话里完成，不经过灵光的任何服务器（灵光也没有服务器）。拦截记录只存在这台电脑上，最多保留最近 500 条。</p>
+    </details>
+    <details>
+      <summary>觉得灵光误报了怎么办？</summary>
+      <p>Agent 会向你说明理由，你判断就好，不用照改。灵光要求 Agent 不要自己给文档加豁免注释，免得把真问题也一起放过。同一个问题在一次对话里被拦了三次还没改，之后这次对话就不再拦它。</p>
+    </details>
+    <details>
+      <summary>右下角一直是红灯？</summary>
+      <ul>
+        <li>对应的 Agent 还没完全退出重开（⌘Q 后再打开），或者重开后还没发过消息。</li>
+        <li>Codex：还没在 Codex 里用 <code>/hooks</code> 信任 LingSpark 的挂钩。</li>
+        <li>鼠标移到灯上，能看到具体是哪个 Agent、还差哪一步。</li>
+      </ul>
+    </details>
+    <details>
+      <summary>会拖慢 Agent 吗？</summary>
+      <p>大多数时候感觉不到：Agent 没写文档时，灵光几乎立刻放行。写了文档时，确定性的检查很快；结束时的自审会让 Agent 多花一点时间，把自己写的东西对照标准读一遍。</p>
+    </details>
+    <details>
+      <summary>怎么卸载？</summary>
+      <p>先在灵光首页把开关关掉（这会把检查从所有 Agent 的配置里移除），再把 LingSpark 从「应用程序」移到废纸篓。</p>
+    </details>
+  </section>
+
+  <footer>LingSpark · 灵光 · 开源项目 · 页面中的截图来自真实的 LingSpark 窗口，数据为演示用例。</footer>
+</main>
+</body>
+</html>

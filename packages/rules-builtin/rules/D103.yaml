@@ -1,0 +1,46 @@
+id: D103
+version: 1
+name: 悬空引用
+pass: 1
+kind: deterministic
+impl: dangling-reference
+severity: error
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '{target} 不存在'
+suggestion: 改成真实存在的章节、图或表的编号。
+
+examples:
+  positive:
+    - state: "## 1. 背景\n\n## 2. 方案\n\n详见第 5 节。"
+      note: 文档只有第 1、2 节
+    - state: "## 3.1 召回\n\n参见第 3.9 节的说明。"
+      note: 三级编号不存在
+    - state: "| a | b |\n|---|---|\n| 1 | 2 |\n\n如表 3 所示。"
+      note: 全文只有一张表
+    - state: "## 一、背景\n\n## 二、方案\n\n见第七章。"
+      note: 中文编号同样要识别
+    - state: "![图](a.png)\n\n如图 4 所示。"
+      note: 全文只有一张图
+  negative:
+    - state: "## 1. 背景\n\n## 2. 方案\n\n详见第 2 节。"
+      note: 引用存在
+    - state: "背景章节没有编号。\n\n详见第 3 节。"
+      note: 文档没有编号标题，无从比对，不报
+    - state: "如表 2 所示，数据来自外部报告。"
+      note: 全文没有表格，无从比对，不报
+    - state: "| a |\n|---|\n| 1 |\n\n如表 1 所示。"
+      note: 表 1 存在
+    - state: "## 3.1 召回\n\n## 3.2 排序\n\n见第 3.2 节。"
+      note: 多级编号命中
+    - state: "## 1. 背景\n\n## 2. 方案\n\n第五章同时更新了已确认的退货时限。"
+      note: 没有引用动词，是在谈论另一份文档的章节（真实文档里出现过的写法）
+    - state: "## 1. 背景\n\n| 章节 | 主题 |\n|---|---|\n| 第 5 章 | 售后流程 |"
+      note: 表格里列举别的文档的章节（真实文档里出现过的写法）
+    - state: "| a |\n|---|\n| 1 |\n\n报表是每日快照，不代表 2026-03-01 之后的数据已经核对。"
+      note: 「代表」里的表字不是表格引用（真实文档里出现过的写法）
+    - state: "## 1. 背景\n\n详见《会员积分改版方案》第 7 章。"
+      note: 引用的是另一份具名文档（书名号）

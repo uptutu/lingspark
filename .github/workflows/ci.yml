@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Section 13: no test may make a real network request or use a real API key.
+# Nothing in this workflow provides credentials to the test step.
+env:
+  LINGSPARK_NO_NETWORK: '1'
+
+jobs:
+  check:
+    name: ${{ matrix.os }} / node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        node: ['22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Generate builtin rule bundle
+        run: pnpm --filter @lingspark/rules-builtin build
+
+      - run: pnpm run lint
+
+      - run: pnpm run typecheck
+
+      - run: pnpm run test
+
+      - run: pnpm run build
+
+      # The single-file executable is per platform, so each runner builds its
+      # own and proves it runs with nothing installed but itself.
+      - name: Build single-file executable
+        run: pnpm --filter @lingspark/cli build:sea
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingspark-${{ matrix.os }}
+          path: |
+            packages/cli/sea/lingspark
+            packages/cli/sea/lingspark.exe
+          if-no-files-found: error

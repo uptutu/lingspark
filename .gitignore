@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.lingspark-scratch/
+packages/cli/sea/
+packages/desktop/release/
+.venv/
+.lingspark-review-*.json

@@ -1,0 +1,14 @@
+{
+  "contradiction": true,
+  "a": {
+    "file": "技术方案.md",
+    "line": 10,
+    "text": "工单全文检索引入 Elasticsearch 集群（3 节点），通过 binlog 订阅将工单数据同步到索引，延迟目标 5 秒内。"
+  },
+  "b": {
+    "file": "评审纪要.md",
+    "line": 9,
+    "text": "3. 全文检索不单独建设搜索集群，直接使用 MySQL 8.0 自带的 ngram 全文索引，运维不新增 Elasticsearch 集群。"
+  },
+  "kind": "decision"
+}

@@ -1,0 +1,14 @@
+{
+  "contradiction": true,
+  "a": {
+    "file": "需求文档.md",
+    "line": 11,
+    "text": "3. 删除成员：仅超级管理员可以操作，管理员看不到删除按钮。"
+  },
+  "b": {
+    "file": "技术方案.md",
+    "line": 14,
+    "text": "member:delete 同时授予 owner 和 admin；admin 只能删除 member 角色的账号，不能删除 owner 或其他 admin。"
+  },
+  "kind": "constraint"
+}

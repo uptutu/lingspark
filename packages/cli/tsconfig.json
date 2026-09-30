@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "baseUrl": "../..",
+    "paths": {
+      "@lingspark/core": ["packages/core/src/index.ts"],
+      "@lingspark/core/*": ["packages/core/src/*"],
+      "@lingspark/rules-builtin": ["packages/rules-builtin/generated/rules.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "dist"]
+}

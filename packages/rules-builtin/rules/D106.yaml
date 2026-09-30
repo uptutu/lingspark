@@ -1,0 +1,42 @@
+id: D106
+version: 1
+name: 中英文标点混用
+pass: 1
+kind: deterministic
+impl: mixed-punctuation
+severity: warning
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '中文句子里出现了半角「{mark}」{suffix}'
+suggestion: 换成对应的全角标点。
+
+examples:
+  positive:
+    - state: "这是第一句,后面还有一句。"
+      note: 半角逗号夹在中文之间
+    - state: "结论如下: 方案可行。"
+      note: 半角冒号后接中文
+    - state: "真的吗? 我不确定。"
+      note: 半角问号前是中文
+    - state: "这里(括号里是中文)结束。"
+      note: 半角括号包中文
+    - state: "注意;这一点很重要。"
+      note: 半角分号
+    - state: "行为:读取上周订单,生成清单。\n\n功能点:一句话下单。\n\n下一步:等待输入(后续提供)。\n\n信用系数:初始 1.0,违约 -0.2。\n\n识别置信度不足时;列出选项。\n\n问题在于:有库存不代表可发货。"
+      note: 通篇半角风格，合并为一条全文级诊断（真实文档里出现过的写法）
+  negative:
+    - state: "版本号是 v1.2.3，端口 8080。"
+      note: 半角句点在数字之间
+    - state: "文档在 docs.typesafe.ai 上，可以直接访问。"
+      note: 域名里的半角句点
+    - state: "预计 50,000 人，误差不大。"
+      note: 千分位逗号在数字之间
+    - state: "我们用 TypeScript (strict) 模式。"
+      note: 半角括号里是英文，属于常见写法
+    - state: "这是完全正常的一句话，标点都是全角的。"
+      note: 全部全角
+    - state: "Run `npm install, then build` to continue."
+      note: 纯英文上下文

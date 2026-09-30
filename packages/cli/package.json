@@ -1,0 +1,21 @@
+{
+  "name": "@lingspark/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "lingspark": "./dist/lingspark.cjs"
+  },
+  "scripts": {
+    "build": "tsup",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "build:sea": "node scripts/build-sea.mjs"
+  },
+  "dependencies": {
+    "@lingspark/core": "workspace:*",
+    "@lingspark/rules-builtin": "workspace:*"
+  },
+  "devDependencies": {
+    "postject": "^1.0.0-alpha.6"
+  }
+}

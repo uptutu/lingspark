@@ -1,0 +1,46 @@
+id: D110
+version: 1
+name: 空章节
+pass: 1
+kind: deterministic
+impl: empty-section
+severity: warning
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '「{title}」下面没有内容'
+suggestion: 补上内容，或者删掉这个标题。
+
+examples:
+  positive:
+    - state: "## 风险\n\n## 上线计划\n\n按计划推进。"
+      note: 风险一节是空的
+    - state: "# 背景\n\n# 目标\n\n提升留存。"
+      note: 背景一节是空的
+    - state: "## 甲\n\n正文。\n\n## 乙\n\n## 丙\n\n正文。"
+      note: 乙是空的
+    - state: "### 三级空标题\n\n### 另一个三级\n\n正文。"
+      note: 同级之间为空
+    - state: "# 结尾标题"
+      note: 文末的空标题
+  negative:
+    - state: "## 方案\n\n### 子方案一\n\n正文。"
+      note: 下面紧跟更深一级标题，是正常的层级结构
+    - state: "## 风险\n\n有两点风险。"
+      note: 有正文
+    - state: "## 数据\n\n| a |\n|---|\n| 1 |"
+      note: 表格也算内容
+    - state: "## 步骤\n\n- 第一步\n- 第二步"
+      note: 列表也算内容
+    - state: "## 引用\n\n> 来自会议纪要。"
+      note: 引用也算内容
+    - state: "### 模块关系\n\n```\n A --> B\n```\n\n### 下一节\n\n正文。"
+      note: 整节内容是一张 ASCII 图，代码块也算内容（真实文档里出现过的写法）
+    - state: "### 2.4 跨境物流（0项，空分组）\n\n### 2.5 其他\n\n正文。"
+      note: 标题里已声明为空（真实文档里出现过的写法）
+    - state: "#### 1.9.3 退货管理（与前文同构，不再重复摘录）\n\n#### 1.9.4 库存\n\n正文。"
+      note: 标题里已说明省略原因（真实文档里出现过的写法）
+    - state: "## 历史记录：整页重写（已撤销）\n\n## 当前版本\n\n正文。"
+      note: 已撤销的历史标记（真实文档里出现过的写法）

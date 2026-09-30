@@ -1,0 +1,14 @@
+{
+  "contradiction": true,
+  "a": {
+    "file": "需求文档.md",
+    "line": 11,
+    "text": "单笔退款金额不超过 200 元，超过的订单走普通退款流程。"
+  },
+  "b": {
+    "file": "技术方案.md",
+    "line": 10,
+    "text": "金额阈值：配置项 fast_refund_max_amount 设为 500，单位为元，退款金额小于等于该值才放行。"
+  },
+  "kind": "number"
+}

@@ -1,0 +1,46 @@
+id: D111
+version: 1
+name: 计数不符
+pass: 1
+kind: deterministic
+impl: count-mismatch
+severity: error
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '正文说「{phrase}」，但下面的列表有 {actual} 项'
+suggestion: 把数字改成实际的项数，或者补齐列表。
+
+examples:
+  positive:
+    - state: "以下三点需要确认：\n\n- 第一点\n- 第二点"
+      note: 说三点，只有两项
+    - state: "共五个步骤：\n\n- 一\n- 二\n- 三\n- 四"
+      note: 说五个，只有四项
+    - state: "方案分为两部分：\n\n- 甲\n- 乙\n- 丙"
+      note: 说两部分，有三项
+    - state: "包括 4 个方面：\n\n- 一\n- 二\n- 三"
+      note: 阿拉伯数字同样识别
+    - state: "有十二项待办：\n\n- 一\n- 二"
+      note: 十二这样的复合中文数字
+    - state: "另有两项需要法务尽快确认，直接影响上线时间：\n\n- 甲\n- 乙\n- 丙\n- 丁"
+      note: 说两项列了四项（真实文档里出现过的写法）
+  negative:
+    - state: "以下三点需要确认：\n\n- 第一点\n- 第二点\n- 第三点"
+      note: 数目一致
+    - state: "共有三个原因，我们在下一节逐一展开。\n\n这是一个普通段落，不是列表。"
+      note: 后面不是列表，不检查
+    - state: "分为两部分：\n\n- 甲\n- 乙"
+      note: 一致
+    - state: "本期投入三个人。\n\n- 张三\n- 李四\n- 王五"
+      note: 一致
+    - state: "第三点是最关键的。\n\n- 甲\n- 乙"
+      note: 「第三点」不是计数短语
+    - state: "旧版只有一个输入框，不能切换排序。新版则是两个并列的按钮：\n\n- 甲\n- 乙"
+      note: 「只有一个」是「仅仅一个」，且不在引出列表的那一句（真实文档里出现过的写法）
+    - state: "需要说明，上一节四条建议里有一条没有数据支撑，下面逐条说明来源：\n\n- 一\n- 二\n- 三\n- 四"
+      note: 「四条里有一条」是部分指代（真实文档里出现过的写法）
+    - state: "页面提示写着“需同时满足以下 3 项”，实际却列出 5 项：\n\n- 一\n- 二\n- 三\n- 四\n- 五"
+      note: 引号里是在引述别人的错误（真实文档里出现过的写法）

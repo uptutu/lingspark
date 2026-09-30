@@ -1,0 +1,38 @@
+id: D105
+version: 1
+name: 标题层级跳跃
+pass: 1
+kind: deterministic
+impl: heading-jump
+severity: warning
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '标题层级从 {from} 级跳到了 {to} 级'
+suggestion: 补上中间层级，或者把这一级提上来。
+
+examples:
+  positive:
+    - state: "## 二级\n\n#### 四级"
+      note: 跳过三级
+    - state: "# 一级\n\n### 三级"
+      note: 跳过二级
+    - state: "## 二级\n\n正文。\n\n##### 五级"
+      note: 中间隔着正文同样算跳跃
+    - state: "### 三级\n\n###### 六级"
+      note: 跳三级
+    - state: "# 一级\n\n## 二级\n\n#### 四级"
+      note: 前面正常，后面跳跃
+  negative:
+    - state: "# 一级\n\n## 二级\n\n### 三级"
+      note: 逐级递进
+    - state: "## 二级甲\n\n## 二级乙"
+      note: 同级并列
+    - state: "### 三级\n\n## 二级"
+      note: 回到上一级不算跳跃
+    - state: "# 一级\n\n正文没有别的标题。"
+      note: 只有一个标题
+    - state: "## 二级\n\n### 三级\n\n## 另一个二级\n\n### 另一个三级"
+      note: 正常的树形结构

@@ -1,0 +1,16 @@
+{
+  "name": "@lingspark/rules-builtin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "rules",
+    "generated"
+  ],
+  "scripts": {
+    "build": "node ./scripts/generate.mjs"
+  },
+  "exports": {
+    ".": "./generated/rules.ts"
+  }
+}

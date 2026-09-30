@@ -1,0 +1,19 @@
+LingSpark · 灵光
+Copyright 2026 Kepler
+
+This product was created by Kepler (https://github.com/rytesdd/lingspark).
+
+Under section 4(d) of the Apache License 2.0, any redistribution of this
+software or of a work based on it -- commercial or not -- must carry a
+readable copy of the attribution notices in this file, in the places where
+such notices normally appear (for example an "About" or "Licenses" screen,
+or the documentation shipped with it).
+
+本软件由 Kepler 创作。依据 Apache License 2.0 第 4(d) 条，再分发本软件或基于它的作品
+（包括商业用途）时，须在通常展示此类声明的位置（如"关于""许可"页面或随附文档）保留本文件中的署名。
+
+--------------------------------------------------------------------------------
+
+This product bundles thinking-orbs 0.3.2 (MIT License, Copyright (c) 2026
+Jakub Antalik), in packages/core/src/ui/orb.generated.ts. Its license text is
+kept in that file.

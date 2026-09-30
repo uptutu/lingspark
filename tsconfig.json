@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@lingspark/core": ["packages/core/src/index.ts"],
+      "@lingspark/core/*": ["packages/core/src/*"],
+      "@lingspark/rules-builtin": ["packages/rules-builtin/generated/rules.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/generated/**/*.ts"]
+}

@@ -1,0 +1,5 @@
+# 有这个文件，这个目录下的文档才会被 lingspark 检查（"报名制"）。
+version: 1
+include: ["docs/**/*.md"]
+doc_types:
+  "docs/**": prd

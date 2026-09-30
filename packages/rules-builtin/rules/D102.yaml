@@ -1,0 +1,38 @@
+id: D102
+version: 1
+name: 术语不一致
+pass: 1
+kind: deterministic
+impl: terminology
+severity: warning
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '「{found}」不是本项目的标准说法，应该用「{preferred}」'
+suggestion: 统一改成术语表里的首选说法。
+
+examples:
+  positive:
+    - state: "本期要提升日活用户数量。"
+      note: 命中 forbidden 的「日活用户」
+    - state: "每日活跃的数据从哪里来？"
+      note: 命中 forbidden 的「每日活跃」
+    - state: "我们按日活用户来分层。"
+      note: 同上，出现在句中
+    - state: "指标口径：日活用户 = 当日打开 App 的人。"
+      note: 出现在定义句里同样要报
+    - state: "上周日活用户下降，本周回升。"
+      note: 出现在叙述句里
+  negative:
+    - state: "本期要提升日活跃用户数量。"
+      note: 「日活跃」是「日活跃用户」的子串，不得误伤
+    - state: "DAU 是被允许的别名。"
+      note: aliases_allowed 里的写法
+    - state: "日活跃用户和 DAU 是一回事。"
+      note: 首选说法与允许别名同现
+    - state: "这篇文档没有提到任何相关术语。"
+      note: 完全不相关的文本
+    - state: "月活跃用户不在术语表里。"
+      note: 未登记的词不报

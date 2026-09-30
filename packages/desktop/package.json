@@ -1,0 +1,12 @@
+{
+  "name": "@lingspark/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "lingspark Mac 客户端：一个小窗口，一键把文档检查装进你的 AI 代理",
+  "author": "Kepler",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dist": "node scripts/build-mac.mjs"
+  }
+}

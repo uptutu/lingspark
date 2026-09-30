@@ -1,0 +1,42 @@
+id: D109
+version: 1
+name: 重复段落
+pass: 1
+kind: deterministic
+impl: duplicate-paragraph
+severity: warning
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '这一段与第 {line} 行的段落{kind}'
+suggestion: 删掉其中一处，或者把两处合并。
+
+examples:
+  positive:
+    - state: "本期的核心目标是把次日留存从三十二个百分点提升上去，方案分三步走。\n\n本期的核心目标是把次日留存从三十二个百分点提升上去，方案分三步走。"
+      note: 完全重复
+    - state: "我们计划在第四季度完成召回服务的重构，并且同步升级排序模型的特征体系。\n\n我们计划在第四季度完成召回服务的重构，并且同步升级排序模型的特征体系。"
+      note: 完全重复的长段落
+    - state: "风险主要来自上游数据源的稳定性，如果上游延迟超过五分钟，整条链路都会受影响。\n\n风险主要来自上游数据源的稳定性，如果上游延迟超过五分钟，整条链路都会受影响！"
+      note: 只差一个标点，高度相似
+    - state: "- 第一项要做的事情是梳理现有的全部接口，并且标注出哪些是对外暴露的\n- 第一项要做的事情是梳理现有的全部接口，并且标注出哪些是对外暴露的"
+      note: 列表项之间的重复
+    - state: "本方案不改变现有的数据模型，只在服务层增加一层缓存，降低数据库压力。\n\n本方案不改变现有的数据模型，只在服务层增加一层缓存，降低数据库压力。"
+      note: 完全重复
+  negative:
+    - state: "在 iOS 上，我们通过系统提供的接口来获取设备标识，并在本地做一次哈希。\n\n在 Android 上，我们通过系统提供的接口来获取设备标识，并在本地做一次哈希。"
+      note: 平行结构，只差平台名，不算重复
+    - state: "暂无。\n\n暂无。"
+      note: 太短，重复是正常的
+    - state: "第一段讲的是背景，介绍了我们为什么要做这件事以及它的紧迫性在哪里。\n\n第二段讲的是方案，说明我们打算怎么做以及分几个阶段落地。"
+      note: 内容完全不同
+    - state: "同上。\n\n同上。"
+      note: 太短
+    - state: "本期预算两百万元，人力投入是三个后端加一个前端，周期是一个季度。\n\n下期预算五百万元，人力投入是六个后端加两个前端，周期是两个季度。"
+      note: 结构相似但数值与内容都不同
+    - state: "Please continue the summary in the same style.\n\nPlease continue the summary in the same style."
+      note: 粘贴进来的英文转录，不是中文段落（真实文档里出现过的写法）
+    - state: "- 引用目标：/home/dev/shop-api/src/order_service.py:812\n- 引用目标：/home/dev/shop-api/src/order_service.py:95"
+      note: 路径列表前缀相同，不是重复段落（真实文档里出现过的写法）

@@ -1,0 +1,38 @@
+id: D104
+version: 1
+name: 必备章节缺失
+pass: 1
+kind: deterministic
+impl: required-sections
+severity: error
+scope: document
+doc_types: [prd, tech-design, report]
+status: active
+origin: builtin
+
+message: '这篇 {docType} 缺少必备章节：{missing}'
+suggestion: 补上缺少的章节，或者在配置里调整该文档类型的必备章节。
+
+examples:
+  positive:
+    - state: "---\ndoc_type: prd\n---\n\n# 目标\n\n# 方案\n\n# 指标"
+      note: 缺背景和范围
+    - state: "---\ndoc_type: prd\n---\n\n# 背景\n\n# 目标"
+      note: 缺方案、范围、指标
+    - state: "---\ndoc_type: tech-design\n---\n\n# 背景\n\n# 架构"
+      note: 缺风险和上线
+    - state: "---\ndoc_type: report\n---\n\n# 结论\n\n# 数据"
+      note: 缺下一步
+    - state: "---\ndoc_type: tech-design\n---\n\n# 目标\n\n# 设计\n\n# 取舍"
+      note: 缺上线相关章节
+  negative:
+    - state: "---\ndoc_type: prd\n---\n\n# 背景\n\n# 目标\n\n# 方案\n\n# 非目标\n\n# 验收指标"
+      note: 五组都命中
+    - state: "---\ndoc_type: prd\n---\n\n# 一、问题\n\n# 二、目标\n\n# 三、需求\n\n# 四、不做什么\n\n# 五、衡量"
+      note: 用同义词命中
+    - state: "---\ndoc_type: report\n---\n\n# 摘要\n\n# 进展\n\n# 建议"
+      note: 报告三组都命中
+    - state: "---\ndoc_type: tech-design\n---\n\n# 背景\n\n# 架构设计\n\n# 风险与取舍\n\n# 发布与回滚"
+      note: 技术方案四组都命中
+    - state: "# 随便写点什么\n\n没有 frontmatter，类型是 generic，没有必备章节。"
+      note: generic 不检查

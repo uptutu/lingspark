@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/tools/hook-probe/probe.mjs\" post-tool-use",
+            "timeout": 10 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/tools/hook-probe/probe.mjs\" stop",
+            "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+id: D108
+version: 1
+name: 占位符残留
+pass: 1
+kind: deterministic
+impl: placeholder-left
+severity: error
+scope: document
+doc_types: [prd, tech-design, report, generic]
+status: active
+origin: builtin
+
+message: '这里还留着占位符「{placeholder}」'
+suggestion: 补上真正的内容，或者删掉这一段。
+
+examples:
+  positive:
+    - state: "具体指标待补充。"
+      note: 中文占位符
+    - state: "TODO: 补充回滚方案。"
+      note: ASCII 占位符
+    - state: "TODO 补充上线时间"
+      note: 段落开头的 TODO 加空格，没有冒号（实测时漏报过）
+    - state: "## 七、附录（待补充，可选）"
+      note: 标题里的待补充（真实文档里出现过的写法）
+    - state: "上线时间待填写。"
+      note: 待填写
+    - state: "这部分内容此处省略。"
+      note: 此处省略
+    - state: "负责人：XXX"
+      note: XXX 占位
+    - state: "详细设计（略）。"
+      note: 括号略
+  negative:
+    - state: "我们讨论了 TODOS.md 里的条目。"
+      note: TODO 是更长单词的一部分
+    - state: "函数名叫 xxxHandler，是历史遗留。"
+      note: xxx 在标识符内部
+    - state: "这一节的内容已经写完了。"
+      note: 没有占位符
+    - state: "补充说明：见附录。"
+      note: 「补充」不是「待补充」
+    - state: "字段 fixmeCount 记录修复次数。"
+      note: FIXME 在标识符内部
+    - state: "待确认：日均 5 千单的统计口径；节假日是否计入。未确认前不下收益结论。"
+      note: 诚实列出未决事项，不是占位符（真实文档里出现过的写法）
+    - state: "缺货后可换货、延期或退款，联动规则待定。"
+      note: 诚实标注的未决规则，不是占位符（真实文档里出现过的写法）
+    - state: "购物车里的商品不占位，付款成功后才占用库存。"
+      note: 「占位」是库存业务的领域术语（真实文档里出现过的写法）
+    - state: "「已下单·待商家确认」只在商家开启手动审单时出现。"
+      note: 「待确认」是业务状态名（真实文档里出现过的写法）
+    - state: "采用 TODO 驱动的迭代计划方式。"
+      note: TODO 是功能名的一部分（真实文档里出现过的写法）
+    - state: "模板里留好占位槽，如 `<!-- TODO: banner image -->`。"
+      note: 行内代码里是在讲占位符，不是留了占位符（真实文档里出现过的写法）
+    - state: "增加收货地址后直接出现待填写的表单。"
+      note: 「待填写的」是修饰语（真实文档里出现过的写法）
+    - state: "筛选处理中、待补充、待审核、已完成和异常工单。"
+      note: 状态名列举（真实文档里出现过的写法）
+    - state: "方案一节最后留一句\"TODO: 补充回滚方案\"，看它能不能被拦住。"
+      note: 引号里是在提到占位符（本项目演示文档里的写法）

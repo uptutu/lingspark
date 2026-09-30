@@ -1,0 +1,30 @@
+{
+  "name": "lingspark-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "pnpm --filter @lingspark/rules-builtin build && pnpm --filter @lingspark/core build && pnpm --filter @lingspark/cli build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ci": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "build:sea": "pnpm run build && pnpm --filter @lingspark/cli build:sea"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "esbuild": "0.27.7",
+    "eslint": "^9.17.0",
+    "globals": "^17.12.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}

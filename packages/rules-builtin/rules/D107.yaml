@@ -1,0 +1,40 @@
+id: D107
+version: 1
+name: 中英文之间缺空格
+pass: 1
+kind: deterministic
+impl: cjk-latin-spacing
+severity: info
+scope: document
+doc_types: [prd, tech-design, report, generic]
+# Off unless a project turns it on: it is a house-style preference, not an
+# error, and it fires on almost every line of real technical Chinese.
+status: retired
+origin: builtin
+
+message: '中英文之间建议加空格：{span}'
+suggestion: 在中文和英文、数字之间加一个半角空格。
+
+examples:
+  positive:
+    - state: "我们用TypeScript写的。"
+      note: 中文紧挨英文
+    - state: "日活是50万。"
+      note: 中文紧挨数字
+    - state: "部署在AWS上。"
+      note: 全大写缩写同样算
+    - state: "这是v2版本。"
+      note: 版本号
+    - state: "请打开index.html文件。"
+      note: 文件名两侧都紧挨中文
+  negative:
+    - state: "我们用 TypeScript 写的。"
+      note: 已经有空格
+    - state: "日活是 50 万。"
+      note: 数字两侧有空格
+    - state: "This is pure English text."
+      note: 没有中文
+    - state: "这是一句纯中文，没有任何英文。"
+      note: 没有英文
+    - state: "部署在 AWS 上，用的是 EC2。"
+      note: 多处都正确

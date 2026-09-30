@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>LingSpark 演示</title>
+<style>
+/* The demo video's stage, 1280x720 (tools/video). The window on the right is
+   the real setup page, driven by the script below; the terminal text is what
+   the real hook printed. */
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #07080a; color: #ececec;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(900px 600px at 78% 45%, rgba(80, 170, 255, 0.10), transparent 60%),
+              radial-gradient(700px 500px at 10% 90%, rgba(80, 255, 190, 0.05), transparent 60%); }
+
+.caption { position: absolute; left: 96px; top: 150px; width: 520px; transition: opacity 0.5s, transform 0.5s; }
+.caption.out { opacity: 0; transform: translateY(8px); }
+.caption .step { font-size: 15px; color: #6fb8ff; letter-spacing: 1px; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
+.caption h1 { white-space: pre-line; font-size: 44px; line-height: 1.25; margin: 0 0 18px; font-weight: 650; letter-spacing: -0.5px; }
+.caption p { font-size: 20px; line-height: 1.7; color: #a9a9a9; margin: 0; }
+
+.window { position: absolute; left: 736px; top: 90px; width: 320px; height: 400px; transform-origin: 0 0; transform: scale(1.35);
+  border-radius: 10px; overflow: hidden; background: #000;
+  box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.14), 0 30px 80px rgba(0, 0, 0, 0.7); transition: opacity 0.6s; }
+.window iframe { width: 320px; height: 400px; border: 0; display: block; }
+.window .lights { position: absolute; left: 14px; top: 13px; display: flex; gap: 6px; pointer-events: none; }
+.window .lights i { width: 14px; height: 14px; border-radius: 7px; display: block; }
+
+.installer { position: absolute; left: 640px; top: 150px; width: 560px; border-radius: 12px; overflow: hidden; opacity: 0;
+  box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.7); transition: opacity 0.6s; }
+.installer img { display: block; width: 100%; }
+
+.term { position: absolute; left: 80px; top: 120px; width: 560px; height: 480px; border-radius: 12px; background: #0d0e10; opacity: 0;
+  box-shadow: 0 0 0 0.75px rgba(255, 255, 255, 0.10), 0 30px 80px rgba(0, 0, 0, 0.6); transition: opacity 0.5s; overflow: hidden; }
+.term .head { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid #1c1d20; color: #7d7d7d; font-size: 13px; }
+.term .head i { width: 11px; height: 11px; border-radius: 6px; display: block; background: #2e2f33; }
+.term .head span { margin-left: 8px; }
+.term .body { padding: 16px 18px; font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, "PingFang SC", monospace; white-space: pre-wrap; word-break: break-word; }
+.term .you { color: #e8e8e8; }
+.term .you::before { content: "› "; color: #6fb8ff; }
+.term .tool { color: #7d7d7d; }
+.term .ls { color: #ffb4b2; background: rgba(239, 83, 80, 0.08); border-left: 2px solid #ef5350; padding: 8px 12px; margin: 10px 0; display: block; border-radius: 0 6px 6px 0; }
+.term .agent { color: #cfe7ff; }
+.term .ok { color: #7fe0a6; }
+
+.cursor { position: absolute; left: 0; top: 0; width: 22px; height: 22px; z-index: 10; opacity: 0; pointer-events: none;
+  transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.2, 1), opacity 0.3s; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+.cursor.click { animation: press 0.25s; }
+@keyframes press { 50% { scale: 0.8; } }
+
+.end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  background: #07080a; opacity: 0; transition: opacity 0.8s; z-index: 20; }
+.end img { width: 72px; height: 72px; }
+.end h1 { font-size: 46px; margin: 0; }
+.end p { font-size: 20px; color: #a9a9a9; margin: 0; }
+.end .chips { display: flex; gap: 12px; margin-top: 6px; }
+.end .chips span { font-size: 16px; padding: 6px 16px; border: 1px solid #2a2a2a; border-radius: 999px; color: #cfcfcf; }
+.badge { position: absolute; right: 24px; bottom: 18px; font-size: 12px; color: #4d4d4d; }
+</style>
+</head>
+<body>
+<div class="caption" id="cap"><div class="step" id="capStep"></div><h1 id="capTitle"></h1><p id="capText"></p></div>
+<div class="installer" id="installer"><img src="/stage/installer.png" alt=""></div>
+<div class="window" id="win">
+  <iframe id="app" title="LingSpark"></iframe>
+  <span class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#3b3b3b"></i></span>
+</div>
+<div class="term" id="term"><div class="head"><i></i><i></i><i></i><span>Claude Code · 方案</span></div><div class="body" id="termBody"></div></div>
+<svg class="cursor" id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 9.5-6.6 1.3 3.9 7.4-2.9 1.5-3.9-7.4L4 19z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>
+<div class="end" id="end">
+  <img src="/stage/mark.png" alt="">
+  <h1>LingSpark · 灵光</h1>
+  <p>让 AI Agent 写的中文文档，先过一遍逻辑检查</p>
+  <div class="chips"><span>一个开关，零配置</span><span>文档不上传</span><span>开源</span></div>
+</div>
+<div class="badge">画面中的窗口和检查结果均由真实的 LingSpark 生成 · 演示数据</div>
+
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get('t');
+  var $ = function (id) { return document.getElementById(id); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var frame = $('app'), doc = null;
+  var SCALE = 1.35, WIN = { x: 736, y: 90 };
+
+  function caption(step, title, text) {
+    var c = $('cap');
+    c.classList.add('out');
+    return sleep(450).then(function () {
+      $('capStep').textContent = step; $('capTitle').textContent = title; $('capText').textContent = text;
+      c.classList.remove('out');
+    });
+  }
+  function q(sel) { return doc.querySelector(sel); }
+  function waitFor(sel, ms) {
+    var until = Date.now() + (ms || 8000);
+    return new Promise(function (resolve) {
+      (function poll() { var e = q(sel); if (e || Date.now() > until) resolve(e); else setTimeout(poll, 100); })();
+    });
+  }
+  // The cursor, moved to an element inside the app window.
+  function pointAt(el, dx, dy) {
+    var r = el.getBoundingClientRect(), c = $('cursor');
+    c.style.opacity = 1;
+    c.style.transform = 'translate(' + (WIN.x + (r.left + r.width * (dx || 0.5)) * SCALE) + 'px,' + (WIN.y + (r.top + r.height * (dy || 0.5)) * SCALE) + 'px)';
+    return sleep(1000);
+  }
+  function click(el) {
+    var c = $('cursor');
+    c.classList.remove('click'); void c.offsetWidth; c.classList.add('click');
+    el.click();
+    return sleep(300);
+  }
+  function hideCursor() { $('cursor').style.opacity = 0; }
+  function forceHover(on) {
+    var s = doc.getElementById('demo-hover');
+    if (on && !s) { s = doc.createElement('style'); s.id = 'demo-hover';
+      s.textContent = '.pop{opacity:1!important;visibility:visible!important;transform:none!important}'; doc.head.appendChild(s); }
+    if (!on && s) s.remove();
+  }
+  function post(url, body) {
+    return fetch(url, { method: 'POST', body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+  }
+  // The terminal: lines appear, the user's typed.
+  function line(cls, text, typed) {
+    var e = document.createElement('div'); e.className = cls; $('termBody').appendChild(e);
+    if (!typed) { e.textContent = text; return sleep(250); }
+    var i = 0;
+    return new Promise(function (resolve) {
+      (function tick() { e.textContent = text.slice(0, ++i); if (i < text.length) setTimeout(tick, 45); else resolve(); })();
+    });
+  }
+
+  var DOC = '# 会员拉新方案\n\n## 一、目标\n\n本季度日活目标是 50 万。\n\n## 二、方案\n\n邀请有礼、新人专享券两条线并行。经过评估，本季度日活目标是 80 万。\n';
+  var FIXED = DOC.replace('本季度日活目标是 50 万', '本季度日活目标：待确认').replace('经过评估，本季度日活目标是 80 万', '经过评估，本季度日活目标：待确认');
+
+  async function run() {
+    // 0. Title
+    $('installer').style.opacity = 0;
+    await caption('LingSpark · 灵光', 'AI 写的文档，\n先替你查一遍逻辑', '数字对不上、引用不存在、空话套话、前后矛盾——在 Agent 交给你之前拦下来。');
+    await sleep(3500);
+
+    // 1. Install
+    $('win').style.opacity = 0;
+    $('installer').style.opacity = 1;
+    await caption('第 1 步', '下载，拖进「应用程序」', '安装包约 25MB，不用装任何别的东西。');
+    await sleep(3800);
+    $('installer').style.opacity = 0;
+    $('win').style.opacity = 1;
+
+    // 2. Switch on
+    await caption('第 2 步', '打开开关', '灵光自动找到你装过的 Agent，一键接入。不用选文件夹，不用填 Key。');
+    await sleep(800);
+    var sw = await waitFor('#main');
+    await pointAt(sw);
+    await click(sw);
+    await sleep(1600);
+
+    // 3. Restart the agents
+    await caption('第 3 步', '重开你的 Agent', '右下角亮红灯，说明还有 Agent 没生效。重开后发一条消息，灯就变绿。');
+    var light = await waitFor('#agentsLine');
+    await pointAt(light, 0.7, 0.5);
+    forceHover(true);
+    await sleep(2200);
+    var agents = ['claude-code', 'cursor', 'workbuddy', 'codex'];
+    for (var i = 0; i < agents.length; i++) { await post('/demo/hello', { agent: agents[i] }); await sleep(700); }
+    await sleep(2400);
+    forceHover(false);
+    hideCursor();
+    await sleep(800);
+
+    // 4. Write as usual
+    $('cap').classList.add('out');
+    $('term').style.opacity = 1;
+    await sleep(600);
+    await line('you', '帮我写一份会员拉新方案', true);
+    await sleep(600);
+    await line('tool', '● Write 方案/会员拉新方案.md');
+    var r = await post('/demo/write', { name: '会员拉新方案.md', content: DOC, agent: 'claude-code' });
+    await sleep(500);
+    var ls = document.createElement('div'); ls.className = 'ls';
+    ls.textContent = r.text.split('\n\n如果你认为')[0].trim();
+    $('termBody').appendChild(ls);
+    await sleep(3200);
+    await line('tool', '● Update 方案/会员拉新方案.md');
+    await post('/demo/write', { name: '会员拉新方案.md', content: FIXED, agent: 'claude-code' });
+    await sleep(400);
+    await line('agent', '文档里本季度日活目标前后写了 50 万和 80 万，我不确定哪个对，已把两处都改成「待确认」。请告诉我正确的目标值。');
+    await sleep(3600);
+
+    // 5. What was stopped
+    $('term').style.opacity = 0;
+    await caption('第 4 步', '看灵光拦下了什么', '首页记着今天和累计拦下的问题。点进去，能看到原文、标红的片段和处理状态。');
+    await sleep(2200);
+    var link = await waitFor('.stat-link');
+    if (link) { await pointAt(link); await click(link); }
+    var card = await waitFor('.card');
+    await sleep(900);
+    if (card) { await pointAt(card, 0.5, 0.3); await click(card); }
+    await sleep(3800);
+    hideCursor();
+
+    // End
+    $('end').style.opacity = 1;
+    await sleep(4000);
+    window.__done = true;
+  }
+
+  frame.onload = function () {
+    doc = frame.contentDocument;
+    // Show the page as the Mac app shows it.
+    doc.body.classList.add('in-app', 'mac-app');
+    window.__ready = true;
+    if (/[?&]auto=1/.test(location.search)) run();
+  };
+  window.__start = run;
+  frame.src = '/?t=' + encodeURIComponent(token);
+})();
+</script>
+</body>
+</html>

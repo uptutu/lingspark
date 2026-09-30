@@ -1,0 +1,98 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds the single-file executable on each platform,
+# after the same checks CI runs, and attaches them to a GitHub release.
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  LINGSPARK_NO_NETWORK: '1'
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-14
+            asset: lingspark-macos-arm64
+            desktop: true
+          - os: macos-13
+            asset: lingspark-macos-x64
+            desktop: false
+          # On Windows the executable is the client: double-clicked, it opens
+          # its page in an Edge app window (D-061).
+          - os: windows-latest
+            asset: lingspark-windows-x64.exe
+            desktop: false
+          - os: ubuntu-latest
+            asset: lingspark-linux-x64
+            desktop: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lingspark/rules-builtin build
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+      - run: pnpm --filter @lingspark/cli build:sea
+
+      - name: Name the executable for its platform
+        shell: bash
+        run: |
+          src=packages/cli/sea/lingspark
+          [ -f "$src.exe" ] && src="$src.exe"
+          mkdir -p out && cp "$src" "out/${{ matrix.asset }}"
+
+      # The Mac client ships the CLI built just above.
+      - name: Build the Mac client
+        if: matrix.desktop
+        shell: bash
+        run: |
+          pnpm --filter @lingspark/desktop dist
+          cp packages/desktop/release/*.dmg out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd out && sha256sum * > SHA256SUMS.txt
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" out/* \
+            --repo "${{ github.repository }}" \
+            --title "lingspark ${{ github.ref_name }}" \
+            --notes "预览版。普通用户下载桌面客户端（Mac 选 .dmg，Windows 选 setup.exe）；命令行版是不带后缀或 .exe 的单个文件。都没有签名，首次打开的放行方法见 README。" \
+            --prerelease
