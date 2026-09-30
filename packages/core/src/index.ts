@@ -20,3 +20,4 @@ export * from './eval.js';
 export * from './setup.js';
 export * from './setup-server.js';
 export * from './today.js';
+export * from './shadow-report.js';

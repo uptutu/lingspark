@@ -17,7 +17,7 @@ LingSpark（灵光）—— 给 AI 编码代理写的中文 Markdown 文档的"�
 - Build:         `pnpm run build`      # rules-builtin → core → cli，顺序不可调换
 - 单文件可执行:  `pnpm run build:sea`  # 输出在 packages/cli/sea/
 - Mac 客户端:     `pnpm run build:client`        # 需要 dmgbuild
-- Windows 客户端:  `pnpm run build:client:win`    # 需要 NSIS（makensis）
+- Windows 客户端:  `pnpm run build:client:win`    # 需要 NSIS（makensis）；外壳用系统自带的 csc.exe
 - Linux 客户端:    `pnpm run build:client:linux`  # 需要 dpkg-deb
 
 需要 Node ≥ 22、pnpm 9.15.0（仓库 `packageManager` 字段已锁定）。
@@ -26,11 +26,13 @@ CI 设了 `LINGSPARK_NO_NETWORK=1`：任何测试都不准访问真实网络，�
 
 ## Project layout
 
-- `packages/core`            — 解析器、规则加载、判定后端、hook 适配、miner、install 逻辑
+- `packages/core`            — 解析器、规则加载、判定后端、hook 适配、miner、install 逻辑，
+                              以及收敛 e2e（`src/e2e/`，见 DECISIONS D-076）
 - `packages/cli`            — CLI 入口，`lingspark` 命令；可打成 Node SEA 单文件二进制
-- `packages/desktop`        — 三个平台的客户端外壳：Mac 是 Swift/WKWebView 小程序，Windows 和 Linux
-                              不用外壳，程序本身双击就是客户端（D-074）。产物在 `release/<平台>/`，
-                              各平台一个目录，互不覆盖
+- `packages/desktop`        — 三个平台的客户端外壳：Mac 是 Swift/WKWebView 小程序，Windows 是
+                              C#/WebView2 小程序（`src/win/`，用系统自带的 csc.exe 编译，不装
+                              SDK，见 DECISIONS D-080），Linux 不用外壳，程序本身双击就是客户端（D-074）。
+                              产物在 `release/<平台>/`，各平台一个目录，互不覆盖
 - `packages/rules-builtin`  — YAML 规则源（`rules/*.yaml`），构建期内联为 `generated/rules.ts`
 - `examples/demo`           — 端到端演示：让 Claude Code 故意写一篇有 bug 的文档
 - `tools/hook-probe`        — 探针：核实某个代理的 hook 实际传什么字段（接新代理时用）
@@ -39,6 +41,7 @@ CI 设了 `LINGSPARK_NO_NETWORK=1`：任何测试都不准访问真实网络，�
 - `tools/orb`, `tools/video` — 资源生成
 - `docs/`                   — 用户文档站点（GitHub Pages）
 - `DECISIONS.md`            — 设计决策和理由；遇到拿不准的问题先来这里
+- `PLAN.md`                 — 规则系统完善计划：P0 可见性 → P1 门槛 → P2 边界（D-084 起）
 
 - TypeScript strict + `noUncheckedIndexedAccess` / `verbatimModuleSyntax` / `isolatedModules`
   （`tsconfig.base.json`）；ESM 全栈（`"type": "module"`、`module: NodeNext`）
@@ -51,7 +54,9 @@ CI 设了 `LINGSPARK_NO_NETWORK=1`：任何测试都不准访问真实网络，�
 
 ## Testing instructions
 
-- 单测：`pnpm run test`（Vitest，`packages/*/src/**/*.test.ts`）
+- 单测：`pnpm run test`（Vitest，`packages/*/src/**/*.test.ts`）。注意这个 glob 也包含收敛 e2e
+  （`packages/core/src/e2e/`）：它跑多轮真实 hook，比纯单测慢，是刻意的回归闸门（D-076）；
+  只想重生成基线时用 `pnpm run test:converge`
 - 端到端示例：`examples/demo/` 里有手把手指引，用 `lingspark install --agent claude-code --dry-run`
   接入，再开一个 Claude Code 会话让它按脚本写文档
 - 跨文档检查评测：`node tools/pass3-eval/run.mjs`
@@ -59,6 +64,10 @@ CI 设了 `LINGSPARK_NO_NETWORK=1`：任何测试都不准访问真实网络，�
   `DECISIONS.md`，再去 `packages/core/src/agents.ts` 把它的 `verification` 升级为 `docs`
 - 新增行为必须有测试；改语义规则后用 `lingspark eval --record` 重录并提交到
   `packages/rules-builtin/fixtures/replay/<后端>/`
+- 改完规则想知道"效果到底变好还是变坏"：跑 `pnpm run test:converge`。它让一个脚本代理在真实 hook 上
+  把一篇文档改到没有诊断为止，打印每轮的问题数曲线，并和 `packages/core/src/e2e/baseline.ts` 比对。
+  确认是有意为之，再 `LINGSPARK_CONVERGE_UPDATE=1 pnpm run test:converge` 重新生成基线，并把 diff 读一遍
+  （DECISIONS D-076）
 - **必须** 在 `pnpm run ci` 全绿之后才提 PR
 
 ## 设计铁律（来自 DECISIONS.md；新增决策请追加，不要写在分散的文档里）
@@ -72,6 +81,8 @@ CI 设了 `LINGSPARK_NO_NETWORK=1`：任何测试都不准访问真实网络，�
 - **每条规则都带正反例。** 语义规则上线门槛：反例零误报、正例召回 ≥ 60%；达不到的转
   `shadow`（照跑、记日志、不提示）
 - **hook 的实际命令指向复制到数据目录里的副本**（不是 `packages/cli/dist/`），重建不影响
+- **"收敛了"不能由 checker 自己说了算。** 判定标准里必须有一份跑之前写下的、独立的期望
+  （收敛 e2e 里是每个场景的 `expectRules`），否则把规则关掉就等于宣布产品变好了（D-076）
 
 ## PR & commit conventions
 

@@ -1,32 +1,57 @@
 #!/usr/bin/env node
-// Builds the Windows client: one executable, one installer.
+// Builds the Windows client: the command-line program, the client's window, one
+// installer.
 //
-// There is no window shell on Windows (D-061 / D-074): the program itself is
-// the client. Double-clicking it starts the setup page in an Edge app window,
-// exactly as the Mac client's shell starts it in a WKWebView. So the whole
-// "client" here is the single-file executable -- what this script adds is the
-// icon and version stamp, and an NSIS installer that puts it somewhere and
-// makes a shortcut.
+// There are two programs in the package, and the client is one of them (D-080):
 //
-// The executable is built here rather than reused, because the icon has to be
-// stamped before postject injects the blob: after injection the resource
-// section sits where the Authenticode signature was, and a PE editor handed
-// that file never finishes (D-074). So this script runs `build-sea.mjs` with
-// the stamp hook, then packages whatever came out.
+//   lingspark.exe      the command-line program -- hooks, setup, the checks.
+//                      Node injected into itself, so it is also a console
+//                      program: run it from a terminal.
+//   client\LingSpark.exe
+//                      the client. A window around the setup page, written in
+//                      C# and compiled with the compiler that ships in Windows,
+//                      so packaging the client needs no toolchain installed
+//                      (D-061's argument: the client is a window, not a browser).
+//                      It has no console: double-clicking it opens the page and
+//                      nothing else (D-074 left the terminal behind).
+//
+// The window is ours, which is the whole point: the page used to be shown in an
+// Edge application window, so the task bar showed Edge, and the program behind
+// it was a console that stayed open next to the client for as long as it was.
+// A machine without the WebView2 runtime (Windows 10 without Edge) still gets
+// the page, in Edge, the way it did before -- the shell asks the CLI to open it
+// and gets out of the way.
+//
+// What this script adds is therefore three things: the icon and version stamp
+// on both programs, the client's window compiled from one .cs file, and an NSIS
+// installer that puts the two where the shell expects to find each other.
+//
+// The command-line program is built here rather than reused, because the icon
+// has to be stamped before postject injects the blob: after injection the
+// resource section sits where the Authenticode signature was, and a PE editor
+// handed that file never finishes (D-074). So this script runs `build-sea.mjs`
+// with the stamp hook, then packages whatever came out.
 //
 // Usage: node scripts/build-windows.mjs   (after `pnpm run build` at the root)
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng, encodeIco } from './lib/icon.mjs';
+import { windowsNsi } from './lib/installer.mjs';
+import { fetchWebview2Sdk, stageWebview2Assemblies } from './lib/webview2.mjs';
 
 const pkg = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { version } = JSON.parse(readFileSync(path.join(pkg, 'package.json'), 'utf8'));
 // One directory per platform; see build-linux.mjs for why.
 const release = path.join(pkg, 'release', 'win-x64');
 const work = path.join(release, 'work');
+// The client's own directory, laid out inside the package exactly as the
+// installer puts it on disk, so the smoke test below runs the layout a user
+// would get.
+const clientDir = path.join(work, 'client');
+const clientExe = path.join(clientDir, 'LingSpark.exe');
 const sea = path.join(pkg, '..', 'cli', 'sea', 'lingspark.exe');
 const setup = path.join(release, `lingspark-${version}-win-x64-setup.exe`);
 
@@ -38,7 +63,7 @@ if (process.platform !== 'win32') {
 }
 
 rmSync(release, { recursive: true, force: true });
-mkdirSync(work, { recursive: true });
+mkdirSync(clientDir, { recursive: true });
 
 // The icon Explorer shows on the file, in the task bar and in the Start menu:
 // the same picture the Mac app uses, packed as an .ico (D-074). Written before
@@ -46,7 +71,7 @@ mkdirSync(work, { recursive: true });
 const iconPath = path.join(work, 'icon.ico');
 writeFileSync(iconPath, encodeIco([16, 24, 32, 48, 64, 128, 256], decodePng(readFileSync(path.join(pkg, 'build', 'icon.png')))));
 
-// The executable, stamped and injected in one go.
+// The command-line program, stamped and injected in one go.
 run(process.execPath, [
   path.join(pkg, '..', 'cli', 'scripts', 'build-sea.mjs'),
   '--stamp',
@@ -58,84 +83,84 @@ if (!existsSync(sea)) {
   process.exit(1);
 }
 
-// The installer script. Written out rather than kept as a checked-in file so
+// The client's window. The C# compiler that ships in Windows is at a fixed
+// place, and the 64-bit one is the one that can emit an x64 program; CSC names
+// another, the way makensis does, for a machine where it lives elsewhere.
+const cscCandidates = () =>
+  [
+    process.env['CSC'],
+    path.join(process.env['SystemRoot'] ?? process.env['WINDIR'] ?? 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe'),
+    path.join(process.env['SystemRoot'] ?? process.env['WINDIR'] ?? 'C:\\Windows', 'Microsoft.NET', 'Framework', 'v4.0.30319', 'csc.exe'),
+  ].filter((cmd) => cmd);
+
+const csc = cscCandidates().find((cmd) => existsSync(cmd));
+if (csc === undefined) {
+  console.error('找不到 C# 编译器（csc.exe）。装上 .NET Framework 4.x 之后重试：');
+  console.error(`  找过：${cscCandidates().join('  ')}`);
+  process.exit(1);
+}
+
+const { unpacked } = await fetchWebview2Sdk({ log: (line) => console.log(line) });
+const { references } = stageWebview2Assemblies(unpacked, clientDir);
+
+// /target:winexe is the fix for the terminal window D-074 left behind: a
+// program built for the console gets one from Explorer before its first line of
+// code runs. /codepage:65001 is here because the shell's own source is Chinese
+// and the compiler would otherwise read it as this machine's ANSI code page.
+// No /win32icon: rcedit writes the icon into the finished program below, the
+// same picture and the same step as the command-line program gets.
+run(csc, [
+  '/nologo',
+  '/target:winexe',
+  '/platform:x64',
+  '/optimize+',
+  '/codepage:65001',
+  `/win32manifest:${path.join(pkg, 'src', 'win', 'app.manifest')}`,
+  `/out:${clientExe}`,
+  '/r:System.dll',
+  '/r:System.Core.dll',
+  '/r:System.Drawing.dll',
+  '/r:System.Windows.Forms.dll',
+  ...references.map((dll) => `/r:${dll}`),
+  path.join(pkg, 'src', 'win', 'LingSpark.cs'),
+]);
+
+run(process.execPath, [
+  path.join(pkg, 'scripts', 'stamp-win.mjs'),
+  clientExe,
+  // The task bar shows this program's description when it has no entry of its
+  // own, so the client gets the short one: the sentence belongs in the
+  // properties window, where there is room for it.
+  '--description',
+  'LingSpark · 灵光',
+]);
+
+// A program without a console has nowhere to report a problem, so the build
+// asks it instead: it finds the command-line program, gets a web view out of
+// this machine, and answers in its exit code (D-080). Exit 3 -- no WebView2
+// runtime here -- is a fact about the build machine, not a broken client: the
+// shell falls back to Edge on such a machine, which is what ships.
+const check = spawnSync(clientExe, ['--check'], {
+  stdio: 'inherit',
+  env: { ...process.env, LINGSPARK_CLI: sea },
+});
+if (check.status === 4) {
+  console.error('客户端找不到命令行版 lingspark，构建出来的安装包是坏的。');
+  process.exit(1);
+}
+if (check.status === 3) {
+  console.log('这台机器上没有 WebView2 运行时，客户端在用户机器上会退回 Edge 窗口。');
+} else if (check.status !== 0) {
+  console.error(`客户端自检没有通过（退出码 ${check.status ?? 'null'}）。`);
+  process.exit(1);
+} else {
+  console.log('客户端自检通过：窗口、WebView2、命令行版都在。');
+}
+
+// The installer script, written out rather than kept as a checked-in file so
 // the version and the paths into work/ cannot drift from this script.
-//
-// The BOM is not decoration: without it makensis reads this file as the
-// machine's ANSI code page, so on a Chinese Windows the "卸载" below was
-// written out as mojibake (the Start-menu shortcut really was named
-// "鍗歌浇.lnk"). With the BOM it is decoded as UTF-8 wherever the installer is
-// built, which is also where the installer itself is going to run.
 const nsi = path.join(work, 'installer.nsi');
-// Spelled out rather than pasted in: an invisible character in source is one
-// more thing to trip over in a diff, and ESLint rightly rejects it.
-const BOM = String.fromCharCode(0xfeff);
-writeFileSync(
-  nsi,
-  `${BOM}; LingSpark Windows installer, generated by scripts/build-windows.mjs.
-Unicode true
-RequestExecutionLevel user      ; per-user: no administrator prompt, and the
-                                   ; hooks only ever touch the user's own files
-InstallDir "$LOCALAPPDATA\\Programs\\LingSpark"
-InstallDirRegKey HKCU "Software\\LingSpark" "InstallDir"
-Name "LingSpark"
-OutFile "${setup.replace(/\\/g, '\\\\')}"
-SetCompressor /SOLID lzma
-
-!include "MUI2.nsh"
-
-!define MUI_ABORTWARNING
-!define MUI_ICON "${iconPath.replace(/\\/g, '\\\\')}"
-!define MUI_UNICON "${iconPath.replace(/\\/g, '\\\\')}"
-
-!insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
-
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-
-!insertmacro MUI_LANGUAGE "SimpChinese"
-
-Section "LingSpark" SecMain
-  SectionIn RO
-  ; The program is the client: no resources, no helper process. Double-clicking
-  ; it opens the setup page in a window of its own (D-074).
-  SetOutPath "$INSTDIR"
-  File "${sea.replace(/\\/g, '\\\\')}"
-
-  CreateDirectory "$SMPROGRAMS\\LingSpark"
-  ; The icon comes from the installed program, not from the .ico this build
-  ; wrote: work/ is deleted a few lines after makensis runs, and a shortcut
-  ; that points into it keeps the path it was given instead of copying the
-  ; picture -- so every shortcut on the machine ends up with a blank icon.
-  ; Windows takes the icon out of the exe, which carries it for good (D-074).
-  CreateShortcut "$SMPROGRAMS\\LingSpark\\LingSpark.lnk" "$INSTDIR\\lingspark.exe" "" "$INSTDIR\\lingspark.exe"
-  CreateShortcut "$SMPROGRAMS\\LingSpark\\卸载.lnk" "$INSTDIR\\uninstall.exe" "" "$INSTDIR\\lingspark.exe"
-  CreateShortcut "$DESKTOP\\LingSpark.lnk" "$INSTDIR\\lingspark.exe" "" "$INSTDIR\\lingspark.exe"
-
-  ; The hooks run an absolute path to a copy this program makes on first use,
-  ; so nothing else in the system needs to know where it was installed.
-  WriteRegStr HKCU "Software\\LingSpark" "InstallDir" "$INSTDIR"
-
-  WriteUninstaller "$INSTDIR\\uninstall.exe"
-SectionEnd
-
-Section "Uninstall"
-  Delete "$DESKTOP\\LingSpark.lnk"
-  Delete "$SMPROGRAMS\\LingSpark\\LingSpark.lnk"
-  Delete "$SMPROGRAMS\\LingSpark\\卸载.lnk"
-  RMDir "$SMPROGRAMS\\LingSpark"
-  ; The data directory (config, cache, session state) is the user's, not the
-  ; program's, so it stays. Remove it by hand from %APPDATA%\\lingspark.
-  Delete "$INSTDIR\\lingspark.exe"
-  Delete "$INSTDIR\\uninstall.exe"
-  RMDir "$INSTDIR"
-  DeleteRegKey HKCU "Software\\LingSpark"
-SectionEnd
-`,
-);
+writeFileSync(nsi, windowsNsi({ setup, sea, client: clientDir, icon: iconPath }));
 
 // NSIS is the one build input this script cannot produce itself, and it is
 // installed two incompatible ways. `choco install nsis` shims makensis onto
@@ -183,4 +208,5 @@ rmSync(work, { recursive: true, force: true });
 
 const mb = (p) => (statSync(p).size / 1024 / 1024).toFixed(0);
 console.log(`LingSpark 安装程序 -> ${path.relative(process.cwd(), setup)} (${mb(setup)} MB)`);
-console.log(`命令行版即该安装包里的 lingspark.exe（${mb(sea)} MB），也可从 Releases 单独下载。`);
+console.log(`装好之后 client\\LingSpark.exe 是客户端，lingspark.exe 是命令行版（${mb(sea)} MB）。`);
+console.log('命令行版也可从 Releases 单独下载。');

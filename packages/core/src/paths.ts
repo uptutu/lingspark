@@ -54,6 +54,8 @@ export const dataPaths = {
   reports: (e?: PathEnv) => path.join(dataDir(e), 'reports'),
   log: (e?: PathEnv) => path.join(dataDir(e), 'logs', 'lingspark.log'),
   outboundLog: (e?: PathEnv) => path.join(dataDir(e), 'logs', 'outbound.jsonl'),
+  /** Per-hit shadow-rule records; the weekly report reads these (D-085). */
+  shadowHits: (e?: PathEnv) => path.join(dataDir(e), 'logs', 'shadow-hits.jsonl'),
 } as const;
 
 /** The marker that opts a project in: `<project>/.lingspark/config.yaml`. */

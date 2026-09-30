@@ -26,7 +26,7 @@ export const SETUP_PAGE = `<!doctype html>
 <style>
 :root {
   --bg: #000000; --raise: #0f0f0f; --line: #1f1f1f;
-  --text: #f2f2f2; --muted: #8c8c8c; --faint: #555555; --ok: #4cd07d; --bad: #ef5350;
+  --text: #f2f2f2; --muted: #8c8c8c; --faint: #555555; --ok: #4cd07d; --bad: #ef5350; --pend: #d9a441;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -73,8 +73,12 @@ body.win-app .bar, body.linux-app .bar { display: none; }
 .footer .value { display: flex; align-items: center; gap: 12px; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--muted); }
 .conn { display: inline-flex; align-items: center; gap: 6px; }
 .conn::before { content: ""; width: 6px; height: 6px; border-radius: 3px; background: var(--ok); flex-shrink: 0; }
-/* Connected, but not heard from yet: not restarted, or Codex hooks not trusted (D-066). */
-.conn.wait::before { background: var(--bad); }
+/* Connected, but not heard from yet. Amber while the hook lingspark wrote
+   demonstrably runs here and all that is left is the agent's restart; red
+   when the client ran that command itself and it did not work, which no
+   amount of restarting will fix (D-077). */
+.conn.wait::before { background: var(--pend); }
+.conn.broken::before { background: var(--bad); }
 .none { color: var(--faint); }
 /* The collapsed "X 等 N 个" lists every connected agent on hover. */
 .footer .value.more { cursor: default; }
@@ -370,27 +374,39 @@ label.row { cursor: pointer; }
     sub.hidden = lines.length === 0;
     setOrb(on.length > 0, on.length > 0 && live.checking);
 
-    // Each connected agent gets a light: green once its hook has run, red
-    // while it waits for a restart (or, Codex, for its hooks to be trusted).
-    // None connected reads 待连接 in grey. Hovering lists every agent, and
-    // what a red one still needs (D-066).
+    // Each connected agent gets a light: green once its hook has run, amber
+    // while it waits for a restart (or, Codex, for its hooks to be trusted),
+    // red when the hook lingspark wrote cannot run here at all. None connected
+    // reads 待连接 in grey. Hovering lists every agent, and what one still
+    // needs (D-066, D-077).
     var line = document.getElementById('agentsLine');
     var pop = document.getElementById('agentsPop');
     var waits = function (a) { return live.today.waiting.indexOf(a.id) >= 0; };
+    // The agent's hooks are in its config but the agent is not on this machine:
+    // a leftover from an uninstall. Nothing will ever call us, so this is not
+    // a light that is waiting, it is a light that is wrong (D-081).
+    var missing = function (a) { return a.installed && a.found === false; };
+    // The client ran that command itself and it answered: our side works, the
+    // agent has simply not called yet. Anything else waiting is a real fault.
+    var broken = function (a) { return missing(a) || (waits(a) && a.hook !== null && !a.hook.ok); };
+    var pending = function (a) { return waits(a) && !broken(a); };
+    var light = function (a) { return broken(a) ? 'conn broken' : pending(a) ? 'conn wait' : 'conn'; };
     var anyWaiting = on.some(waits);
-    // The summary light (D-068): red while every agent waits; with one
-    // working, red only until the person has hovered and seen what is missing.
-    var unnoticed = on.filter(function (a) { return waits(a) && live.today.noticed.indexOf(a.id) < 0; });
-    var summaryRed = anyWaiting && (on.every(waits) || unnoticed.length > 0);
+    // The summary light (D-068): red while a hook is broken and nobody has
+    // read why yet; amber while it is only waiting for a restart.
+    var unnoticed = on.filter(function (a) { return broken(a) && live.today.noticed.indexOf(a.id) < 0; });
+    var summaryLight = on.some(broken)
+      ? (on.every(broken) || unnoticed.length > 0 ? 'conn broken' : 'conn wait')
+      : on.some(pending) ? 'conn wait' : 'conn';
     line.classList.remove('more');
     line.replaceChildren.apply(line, on.length > 0
-      ? on.map(function (a) { return el('span', waits(a) ? 'conn wait' : 'conn', a.name); })
+      ? on.map(function (a) { return el('span', light(a), a.name); })
       : [el('span', 'none', '待连接')]);
     // Four names do not fit in 280 pixels: then the first one and a count,
-    // with one light that is red if any agent is.
+    // with one light that carries the worst state of them.
     var collapsed = on.length > 1 && line.scrollWidth > line.clientWidth;
-    if (collapsed) line.replaceChildren(el('span', summaryRed ? 'conn wait' : 'conn', on[0].name + ' 等 ' + on.length + ' 个'));
-    line.onmouseenter = unnoticed.length > 0 && !on.every(waits)
+    if (collapsed) line.replaceChildren(el('span', summaryLight, on[0].name + ' 等 ' + on.length + ' 个'));
+    line.onmouseenter = unnoticed.length > 0
       ? function () {
           line.onmouseenter = null;
           api('/api/notice-waiting', { ids: unnoticed.map(function (a) { return a.id; }) })
@@ -398,15 +414,19 @@ label.row { cursor: pointer; }
             .catch(function () { /* stays red; the next hover asks again */ });
         }
       : null;
-    if (collapsed || anyWaiting) {
+    if (collapsed || anyWaiting || on.some(missing)) {
       line.classList.add('more');
       pop.replaceChildren.apply(pop, on.map(function (a) {
         var item = el('div', 'item');
-        item.appendChild(el('span', waits(a) ? 'conn wait' : 'conn', a.name));
-        if (waits(a)) {
-          item.appendChild(el('span', 'hint', '重新打开 ' + a.name + ' 后生效。'));
-          if (a.afterInstall) item.appendChild(el('span', 'hint', firstSentence(a.afterInstall)));
+        item.appendChild(el('span', light(a), a.name));
+        if (broken(a)) {
+          item.appendChild(el('span', 'hint', missing(a)
+            ? '没找到 ' + a.name + ' 本身，它的配置里还留着 lingspark 的 hook——多半是卸载留下的，关掉即可。'
+            : '接不上：' + a.hook.detail));
+        } else if (waits(a)) {
+          item.appendChild(el('span', 'hint', '已经装好，重新打开 ' + a.name + ' 后生效。'));
         }
+        if (a.afterInstall && !missing(a)) item.appendChild(el('span', 'hint', firstSentence(a.afterInstall)));
         return item;
       }));
     } else {
@@ -541,10 +561,17 @@ label.row { cursor: pointer; }
         name.className = 'name off';
         row.appendChild(el('span', 'note', a.present ? '暂不支持' : '未安装'));
       } else if (!a.present && !a.installed) {
+        // Not found: its config directory may be a leftover or another tool's
+        // (D-081). The switch stays anyway -- an agent installed somewhere we
+        // do not look is still one the person can hook on purpose.
         name.className = 'name off';
-        row.appendChild(el('span', 'note', '未安装'));
+        row.appendChild(el('span', 'note', '没找到，可以手动接入'));
+        row.appendChild(switchFor(false, a.name, function (on) { return api('/api/agent', { id: a.id, on: on }); }));
       } else {
         if (a.installed && a.afterInstall) cell.appendChild(el('div', 'note', a.afterInstall));
+        if (a.installed && a.found === false) {
+          cell.appendChild(el('div', 'note', '没找到 ' + a.name + ' 本身，这多半是卸载留下的，关掉即可。'));
+        }
         row.appendChild(switchFor(a.installed, a.name, function (on) { return api('/api/agent', { id: a.id, on: on }); }));
       }
       agents.appendChild(row);

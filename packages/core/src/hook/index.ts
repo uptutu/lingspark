@@ -7,3 +7,4 @@ export * from './run.js';
 export * from './warm.js';
 export * from './activity.js';
 export * from './review.js';
+export * from './probe.js';

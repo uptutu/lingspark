@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { awaitFirstCall, heardFrom } from './hook/waiting.js';
+import { awaitFirstCall, heardFrom, waitingAgents } from './hook/waiting.js';
+import { probeHook, type HookProbe } from './hook/probe.js';
 import { isMap, parseDocument } from 'yaml';
 import { AGENTS, agentConfigFile, type AgentProfile } from './agents.js';
 import type { JudgeBackendId } from './config/schema.js';
@@ -35,6 +36,12 @@ export interface SetupEnv {
    * launch the app itself.
    */
   readonly binary?: string;
+  /**
+   * Replaced in tests; runs the agent's own hook command once to find out
+   * whether it can run here (D-077). Only ever called for an agent that is
+   * connected but has not called back, so a working install spawns nothing.
+   */
+  readonly probe?: (agent: string, commands: readonly string[]) => HookProbe;
 }
 
 export interface AgentStatus {
@@ -44,6 +51,12 @@ export interface AgentStatus {
   readonly present: boolean;
   /** lingspark can write its hook config (verified from official docs). */
   readonly installable: boolean;
+  /**
+   * The agent itself is on this machine: its directory exists and, for the
+   * agents whose directory another product also creates, the program is where
+   * it should be (D-081). False means the hooks in its config are a leftover.
+   */
+  readonly found: boolean;
   readonly installed: boolean;
   readonly configFile: string | null;
   /** configFile with the home directory written as ~, for display. */
@@ -54,6 +67,12 @@ export interface AgentStatus {
   readonly selfReview: boolean;
   /** When it cannot: the step that turns it on, or null while lingspark has no driver for it. */
   readonly selfReviewStep: string | null;
+  /**
+   * Whether the hook command lingspark wrote can run here, once it has run it
+   * itself. Null for an agent that is not connected, and for one that has
+   * already called back -- there is nothing left to wonder about (D-077).
+   */
+  readonly hook: HookProbe | null;
 }
 
 export interface JudgeOption {
@@ -81,27 +100,73 @@ function hasOurHook(file: string): boolean {
   }
 }
 
-/** Whether a command is on PATH, or an app sits in an Applications folder. */
-function evidenceOf(proof: NonNullable<AgentProfile['installedWhen']>, e: SetupEnv): boolean {
+/** Our hook commands in a config file, empty when it is missing or unreadable. */
+function ourCommandsIn(file: string): string[] {
+  try {
+    return ourCommands(JSON.parse(readFileSync(file, 'utf8')));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Where an app sits on each platform, for `installedWhen.apps` to be looked
+ * for under. This only ever knew about Applications folders, so the check
+ * could not see an app on Windows or Linux at all (D-081).
+ */
+function appRoots(e: SetupEnv): string[] {
   const env = e.pathEnv?.env ?? process.env;
-  const exts = process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''];
+  switch (e.pathEnv?.platform ?? process.platform) {
+    case 'darwin':
+      return ['/Applications', path.join(home(e), 'Applications')];
+    case 'win32':
+      return [
+        env['ProgramFiles'],
+        env['ProgramFiles(x86)'],
+        // Where Windows puts a per-user install, which is where the GUI agents
+        // we know about go.
+        env['LOCALAPPDATA'] === undefined ? undefined : path.join(env['LOCALAPPDATA'], 'Programs'),
+        path.join(home(e), 'AppData', 'Local', 'Programs'),
+      ].filter((d): d is string => d !== undefined);
+    default:
+      return ['/usr/bin', '/usr/local/bin', '/usr/share', '/opt', '/snap'];
+  }
+}
+
+/**
+ * Whether a command is on PATH, or an app sits where its platform puts one.
+ *
+ * App names are written with `/` in the profile and split here, so one list
+ * can name a `.app` bundle and a `Program.exe` side by side. `doctor` asks the
+ * same question, so the two never disagree about whether an agent is really
+ * here (D-081).
+ */
+export function evidenceOf(proof: NonNullable<AgentProfile['installedWhen']>, e: SetupEnv): boolean {
+  const env = e.pathEnv?.env ?? process.env;
+  const exts = (e.pathEnv?.platform ?? process.platform) === 'win32' ? ['.exe', '.cmd', ''] : [''];
   const dirs = (env['PATH'] ?? '').split(path.delimiter).filter((d) => d !== '');
   if (proof.commands.some((c) => dirs.some((d) => exts.some((x) => existsSync(path.join(d, c + x)))))) return true;
-  const appDirs = ['/Applications', path.join(home(e), 'Applications')];
-  return proof.apps.some((app) => appDirs.some((d) => existsSync(path.join(d, app))));
+  const roots = appRoots(e);
+  return proof.apps.some((app) => roots.some((r) => existsSync(path.join(r, ...app.split('/')))));
 }
 
 export function agentStatuses(e: SetupEnv = {}): AgentStatus[] {
+  const probe = e.probe ?? probeHook;
+  // An agent that has not called back is the only one worth asking about: the
+  // question the client cannot answer from disk is whether our own hook runs.
+  const waiting = new Set(waitingAgents(e.pathEnv));
   return AGENTS.filter((a) => a.configFile !== null).map((a: AgentProfile) => {
     const file = agentConfigFile(a, 'user', { homedir: home(e), projectDir: process.cwd() });
     const dir = a.configFile?.[0];
     const installed = file !== null && existsSync(file) && hasOurHook(file);
     const dirFound = dir !== undefined && existsSync(path.join(home(e), dir));
+    const found = a.installedWhen === undefined || evidenceOf(a.installedWhen, e);
     return {
       id: a.id,
       name: a.name,
       // A hook we installed keeps the agent listed, so it can be turned off.
-      present: installed || (dirFound && (a.installedWhen === undefined || evidenceOf(a.installedWhen, e))),
+      present: installed || (dirFound && found),
+      found,
       installable: a.verification === 'docs',
       installed,
       configFile: file,
@@ -109,6 +174,7 @@ export function agentStatuses(e: SetupEnv = {}): AgentStatus[] {
       afterInstall: a.afterInstall ?? null,
       selfReview: a.judgeBackend !== undefined && agentBackendUsable(a.judgeBackend, e.pathEnv),
       selfReviewStep: a.selfReviewStep ?? null,
+      hook: installed && waiting.has(a.id) && file !== null ? probe(a.id, ourCommandsIn(file)) : null,
     };
   });
 }

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { writeFileAtomic } from '../fsutil.js';
 import { agentConfigFile, agentProfile, type AgentId, type InstallScope } from '../agents.js';
+import { log } from '../log.js';
 import { msg } from '../messages.js';
 import { dataDir, type PathEnv } from '../paths.js';
 import { withHooksInstalled, withHooksRemoved, type HookCommand } from './merge.js';
@@ -111,6 +112,14 @@ export function installedHookCommand(
  * real install, and what `doctor` caught. The copy is replaced atomically,
  * so a hook that fires mid-install runs either the old or the new version,
  * never half a file.
+ *
+ * A copy that cannot be replaced is not a reason to refuse the install
+ * (D-077). Windows will not replace a program that is running right now, and
+ * the copy hooks run *is* that program whenever an agent is mid-turn -- which
+ * on Windows is exactly when a person is most likely to be in the client. The
+ * old copy still works, so it keeps the hooks and the new version arrives
+ * with the next install that finds the file free. Only a machine with no copy
+ * at all has nothing to fall back to, and that still fails.
  */
 export function installBinary(
   execPath: string = process.execPath,
@@ -132,6 +141,10 @@ export function installBinary(
       renameSync(tmp, dest);
     } catch (err: unknown) {
       rmSync(tmp, { force: true });
+      if (existsSync(dest)) {
+        log('warn', msg.install.copyKept(dest, String(err)), env);
+        return installedHookCommand(execPath, scriptPath, env);
+      }
       throw new InstallError(msg.install.copyFailed(dest, String(err)));
     }
   }

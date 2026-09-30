@@ -25,7 +25,9 @@ beforeEach(() => {
   home = path.join(root, 'home');
   mkdirSync(home);
   pathEnv = { platform: process.platform, env: { LINGSPARK_DATA_DIR: path.join(root, 'data') }, homedir: home };
-  e = { homedir: home, pathEnv, codexLoggedIn: () => false };
+  // The real probe runs a hook command; here it is a stub, so no test spawns
+  // anything. probeHook itself is tested in hook/probe.test.ts.
+  e = { homedir: home, pathEnv, codexLoggedIn: () => false, probe: () => ({ ok: true, detail: '' }) };
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -46,6 +48,68 @@ describe('agents', () => {
     expect(agentStatuses(e).find((a) => a.id === 'claude-code')?.installed).toBe(false);
   });
 
+  it('does not offer an agent whose config directory is all that is left (D-081)', () => {
+    // What a machine without Cursor looks like: the directory survives, filled
+    // with what other tools write.
+    mkdirSync(path.join(home, '.cursor'), { recursive: true });
+    writeFileSync(path.join(home, '.cursor', 'mcp.json'), '{}');
+    writeFileSync(path.join(home, '.cursor', 'hooks.json'), '{}');
+    expect(agentStatuses(e).find((a) => a.id === 'cursor')?.present).toBe(false);
+
+    // The command on PATH is proof.
+    const bin = path.join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(path.join(bin, 'cursor'), '');
+    const onPath = { ...e, pathEnv: { ...pathEnv, env: { ...pathEnv.env, PATH: bin } } };
+    expect(agentStatuses(onPath).find((a) => a.id === 'cursor')?.present).toBe(true);
+  });
+
+  it('finds the app where each platform puts it, not only in Applications (D-081)', () => {
+    // The directory says the agent has been used; the app says it is really
+    // there. Both are needed, so both are set up here.
+    mkdirSync(path.join(home, '.cursor'), { recursive: true });
+
+    // Windows: %LOCALAPPDATA%\Programs\Cursor\Cursor.exe
+    const local = path.join(root, 'AppData', 'Local');
+    mkdirSync(path.join(local, 'Programs', 'Cursor'), { recursive: true });
+    writeFileSync(path.join(local, 'Programs', 'Cursor', 'Cursor.exe'), '');
+    const win = { ...e, pathEnv: { platform: 'win32' as const, env: { ...pathEnv.env, LOCALAPPDATA: local }, homedir: home } };
+    expect(agentStatuses(win).find((a) => a.id === 'cursor')?.present).toBe(true);
+
+    // macOS: ~/Applications/Cursor.app
+    const mac = { ...e, pathEnv: { platform: 'darwin' as const, env: { ...pathEnv.env }, homedir: home } };
+    expect(agentStatuses(mac).find((a) => a.id === 'cursor')?.present).toBe(false);
+    mkdirSync(path.join(home, 'Applications', 'Cursor.app'), { recursive: true });
+    expect(agentStatuses(mac).find((a) => a.id === 'cursor')?.present).toBe(true);
+  });
+
+  it('says an agent is not there even when our hook is still in its config (D-081)', () => {
+    // Exactly this machine: a `.cursor` directory other tools wrote, and a
+    // lingspark hook in it from an earlier connect. Listed so it can be turned
+    // off, but never reported as working.
+    mkdirSync(path.join(home, '.cursor'), { recursive: true });
+    enableAgents(['cursor'], e);
+    const c = agentStatuses(e).find((a) => a.id === 'cursor');
+    expect(c).toMatchObject({ present: true, installed: true, found: false });
+
+    // Once the program is there, it is found.
+    const bin = path.join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(path.join(bin, 'cursor'), '');
+    const onPath = { ...e, pathEnv: { ...pathEnv, env: { ...pathEnv.env, PATH: bin } } };
+    expect(agentStatuses(onPath).find((a) => a.id === 'cursor')?.found).toBe(true);
+  });
+
+  it('keeps offering an agent it did not find, by hand (D-081)', () => {
+    // Not detected, but lingspark knows how to write its config: the person
+    // may have it installed somewhere we do not look.
+    const cursor = agentStatuses(e).find((a) => a.id === 'cursor');
+    expect(cursor).toMatchObject({ present: false, installable: true, installed: false });
+    const [r] = enableAgents(['cursor'], e);
+    expect(r?.ok).toBe(true);
+    expect(agentStatuses(e).find((a) => a.id === 'cursor')?.installed).toBe(true);
+  });
+
   it('asks for a restart only when an agent is newly connected', () => {
     mkdirSync(path.join(home, '.claude'));
     enableAgents(['claude-code'], e);
@@ -56,6 +120,36 @@ describe('agents', () => {
     enableAgents(['claude-code'], e);
     disableAgents(['claude-code'], e);
     expect(waitingAgents(pathEnv)).toEqual([]);
+  });
+
+  it('runs the hook command of an agent that has not called back, and only then (D-077)', () => {
+    mkdirSync(path.join(home, '.claude'));
+    const asked: string[][] = [];
+    const pe = { ...e, probe: (id: string, cmds: readonly string[]) => (asked.push([id, ...cmds]), { ok: true, detail: '' }) };
+
+    // Not connected: nothing to run, nothing to say.
+    expect(agentStatuses(pe).find((a) => a.id === 'claude-code')?.hook).toBeNull();
+    expect(asked).toEqual([]);
+
+    enableAgents(['claude-code'], pe);
+    const waiting = agentStatuses(pe).find((a) => a.id === 'claude-code');
+    expect(waiting?.hook).toEqual({ ok: true, detail: '' });
+    // The very command that was written into the config is the one run.
+    expect(asked[0]?.[0]).toBe('claude-code');
+    expect(asked[0]?.[1]).toContain('hook --agent claude-code --event');
+
+    heardFrom('claude-code', pathEnv);
+    expect(agentStatuses(pe).find((a) => a.id === 'claude-code')?.hook).toBeNull();
+  });
+
+  it('carries the reason a hook cannot run, for the page to show (D-077)', () => {
+    mkdirSync(path.join(home, '.claude'));
+    enableAgents(['claude-code'], e);
+    const broken = { ...e, probe: () => ({ ok: false, detail: 'hook 指向的程序不存在' }) };
+    expect(agentStatuses(broken).find((a) => a.id === 'claude-code')?.hook).toEqual({
+      ok: false,
+      detail: 'hook 指向的程序不存在',
+    });
   });
 
   it('moves the hooks to a new version of the program when the app opens', () => {

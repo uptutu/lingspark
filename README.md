@@ -52,8 +52,8 @@ lingspark 以 **hook** 的形式挂在代理上，代理不需要"记得"调用�
 | **Linux**（x64） | `lingspark_…_amd64.deb`（Debian/Ubuntu/Mint）或 `lingspark-…-linux-x64.tar.gz`（其他发行版） | 同名不带后缀的文件 |
 
 三个平台的客户端都**不自带浏览器内核**，装好只占约 100MB，绝大部分是检查程序自己的运行环境。
-Mac 的窗口用系统自带的网页组件；Windows 和 Linux 用系统自带的 Edge / Chromium 的"应用窗口"
-（没有 Chromium 时退回默认浏览器）。
+Mac 的窗口用系统自带的网页组件；Windows 用系统自带的 Edge 内核（WebView2，没有它的机器退回
+Edge 的"应用窗口"）；Linux 用系统自带的 Chromium 的"应用窗口"（没有 Chromium 时退回默认浏览器）。
 
 **第一次打开**：预览版都没有做代码签名。
 
@@ -66,13 +66,13 @@ Mac 的窗口用系统自带的网页组件；Windows 和 Linux 用系统自带�
 ```bash
 pnpm install && pnpm run build:sea          # 命令行版：packages/cli/sea/lingspark
 pnpm run build:client                       # Mac 客户端（要装 Xcode 命令行工具）
-pnpm run build:client:win                   # Windows 安装程序（要装 NSIS）
+pnpm run build:client:win                   # Windows 安装程序（要装 NSIS；客户端本身用系统自带的 csc.exe 编译）
 pnpm run build:client:linux                 # Linux 的 .deb 和 .tar.gz（要装 dpkg-deb）
 ```
 
-构建客户端之前先关掉正在运行的客户端：Windows 上 `packages/cli/sea/lingspark.exe`
-既是命令行版也是客户端（D-074），双击它会开配置页，而 Windows 不允许覆盖一个正在
-运行的程序——构建会直接失败并告诉你关掉它。
+构建客户端之前先关掉正在运行的客户端：Windows 上装好的客户端是 `client\LingSpark.exe`，
+构建会写同一个文件，而 Windows 不允许覆盖一个正在运行的程序——构建会直接失败并告诉你关掉它。
+（`packages/cli/sea/lingspark.exe` 是命令行版，双击它也会开配置页，同样要关掉。）
 
 ## 快速开始
 
@@ -126,7 +126,11 @@ doc_types:
 
 代价是审的人就是写的人。想要更客观，可以改成在后台另起一个模型来审（`auto`：谁写谁审，另起一个同款 Agent；或指定下表里的某一个）。在**用户级配置**里改：
 
-用户级配置位置：`~/Library/Application Support/lingspark/config.yaml`
+用户级配置位置（数据目录下的 `config.yaml`，因平台而异）：
+
+- macOS：`~/Library/Application Support/lingspark/config.yaml`
+- Windows：`%APPDATA%\lingspark\config.yaml`
+- Linux：`~/.local/share/lingspark/config.yaml`（或 `$XDG_DATA_HOME/lingspark/config.yaml`）
 
 ```yaml
 judge:
@@ -183,6 +187,7 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 | S207 | 结论没有依据 | warning | 语义 |
 | S208 | AI 腔修辞 | info | 语义 |
 | S209 | 章节内容与标题不符 | warning | 语义 |
+| G301 | 跨文档说法矛盾（只比对同一次会话写的文档） | error | 语义 |
 
 规则都是 YAML（`packages/rules-builtin/rules/`），每条带至少 5 个正例和 5 个"看起来像但其实不是"的反例，这些例子同时是自动测试。语义规则上线的门槛是：**反例零误报、正例召回不低于 60%**，达不到的只以影子规则运行。
 
@@ -194,6 +199,7 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 
 **还没做**：
 - 周报与自动回测：从你的修改意见里总结出候选规则，回测后交你审核上线
+- 规则系统演进：漏报可见性、误报预算、检查边界扩展，路线见 [PLAN.md](PLAN.md)
 - 自动更新、macOS 签名与公证、代码签名（三个平台都没签）、Intel Mac
 
 欢迎提 issue 和 PR，尤其是：你在真实文档里遇到的误报（附一段脱敏后的原文）、新代理的 hook 接入实测。
@@ -212,7 +218,8 @@ pnpm run build:client:linux  # Linux 的 .deb 和 .tar.gz
 客户端是三个平台各打各的：Node 单文件程序不能交叉编译（D-025），所以每个平台在自己的
 runner 或自己的机器上构建，`release.yml` 就是按这个排的。
 
-`DECISIONS.md` 记录了主要的设计决策和理由。语义规则的测试回放的是 `packages/rules-builtin/fixtures/replay/` 里录好的模型回答，CI 不联网；改了语义规则后用 `lingspark eval --record` 重录。
+`DECISIONS.md` 记录了主要的设计决策和理由；规则系统的完善路线（漏报可见性 → 误报预算 →
+边界扩展）在 `PLAN.md`，决策编号 D-084 起。语义规则的测试回放的是 `packages/rules-builtin/fixtures/replay/` 里录好的模型回答，CI 不联网；改了语义规则后用 `lingspark eval --record` 重录。
 
 ## 致谢
 

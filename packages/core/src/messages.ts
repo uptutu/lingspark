@@ -11,6 +11,8 @@
  * rule reads, not what it says.
  */
 
+import { PROBE_TIMEOUT_MS } from './constants.js';
+
 export const msg = {
   config: {
     unsupportedVersion: (got: unknown, want: number) =>
@@ -87,6 +89,7 @@ export const msg = {
   doctor              自检
   mine                挖掘会话记录
   eval                在带标签的样本上评测规则
+  shadow-report       影子规则命中报告（最近 7 天）
 
 选项：
   -h, --help          显示帮助
@@ -137,6 +140,21 @@ lingspark check --all [选项]
       '如果你认为某条是误报，向用户说明理由，不要自行添加 lingspark-disable 注释。',
   },
 
+  /**
+   * What the client says when it runs an agent's hook command itself to see
+   * whether it works (D-077). The page shows this next to a connected agent
+   * that has not called back yet, so "not restarted" and "not working" stop
+   * looking the same.
+   */
+  probe: {
+    noCommand: '配置里没有 lingspark 的 hook 命令',
+    unreadable: (command: string) => `看不懂这条 hook 命令，没有运行：${command}`,
+    noBinary: (exe: string) => `hook 指向的程序不存在：${exe}`,
+    spawnFailed: (exe: string, detail: string) => `hook 命令启动不了（${exe}）：${detail}`,
+    badExit: (exe: string, code: string) => `hook 命令退出了（${exe}，退出码 ${code}）`,
+    slow: (exe: string) => `hook 命令 ${String(PROBE_TIMEOUT_MS / 1000)} 秒没有返回：${exe}`,
+  },
+
   install: {
     usage: (installable: string, manual: string) => `lingspark install --agent <代理> [--scope user|project] [--dry-run]
 lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
@@ -160,6 +178,8 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
       `接入后运行 lingspark doctor 检查。也可以先用仓库里的 tools/hook-probe 看它实际传来的数据。`,
     noSource: '找不到正在运行的 lingspark 程序本身，无法安装。',
     copyFailed: (dest: string, detail: string) => `无法把 lingspark 复制到 ${dest}：${detail}`,
+    copyKept: (dest: string, detail: string) =>
+      `没能换成新的一份（${dest}：${detail}），hook 继续跑原来那一份，功能不受影响。`,
     copied: (dest: string) => `lingspark 已复制到 ${dest}，hook 运行的是这一份。`,
     quoteInPath: (p: string) => `可执行文件路径里有双引号，无法安全地写进 hook 命令：${p}`,
     unreadable: (file: string, detail: string) => `读不了配置文件 ${file}：${detail}`,
@@ -199,6 +219,9 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
     partiallyInstalled: (file: string) =>
       `${file} 里只装了一半（写完检查和结束检查缺了一个）。重新运行 lingspark install 可以修复`,
     agentConfigBroken: (file: string, detail: string) => `${file} 不是合法的 JSON：${detail}`,
+    programFor: (name: string) => `${name} 程序`,
+    programNotFound: (name: string) =>
+      `没找到 ${name} 本身（配置目录在，程序不在）。它不会调用 lingspark，多半是卸载留下的；在配置页把它关掉即可。`,
     stalePath: (paths: string, agent: string) =>
       `hook 指向的程序已经不存在：${paths}。hook 会静默失效。重新运行 lingspark install --agent ${agent} 修复`,
     otherCopy: (file: string, agent: string) =>
@@ -254,6 +277,25 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
     unclassified: '没有配置判定后端，这些记录还没有分类（是不是修改意见、属于哪一类）。配置后再运行一次 mine 会自动补上。',
     notRevision: (n: number) => `${String(n)} 条经判定不是在对文档提修改意见（比如是提新需求或提问），没有记录。`,
     backfilled: (n: number) => `补做了 ${String(n)} 条旧记录的分类。`,
+  },
+
+  /** `lingspark shadow-report` (D-085): what shadow rules quietly noticed. */
+  shadowReport: {
+    usage: `lingspark shadow-report [--days <天数>]
+
+还没有达到提示标准的规则（影子规则）只记录、不打扰你。这个命令汇总它们最近命中了什么：
+命中多说明规则抓到了真问题，值得提前启用；一直零命中是它转正前的沉默证据。
+
+  --days      看最近多少天，默认 7，范围 1 到 90
+
+退出码：0。这个命令只读日志，不做任何检查。
+`,
+    title: (days: number) => `影子规则命中报告（最近 ${String(days)} 天）`,
+    explain: '影子规则达标前只记录、不提示。同一天的同一处命中，写文件后和结束时各查一遍，只计一次。',
+    ruleLine: (ruleId: string, hits: number, files: number, last: string) =>
+      `[${ruleId}] 命中 ${String(hits)} 次，涉及 ${String(files)} 个文件，最近：${last}`,
+    empty: (days: number) => `最近 ${String(days)} 天没有影子规则命中。`,
+    badDays: '选项 --days 需为 1 到 90 的整数。',
   },
 
   judge: {

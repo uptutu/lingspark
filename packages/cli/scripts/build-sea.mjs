@@ -73,13 +73,14 @@ mkdirSync(seaDir, { recursive: true });
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // Windows refuses to delete a file that is running, and on Windows this program
-// is also the client (D-074): double-clicking the exe in sea/ opens the setup
-// page, so the leftover from the last build is regularly the very thing holding
-// the next one up. Nothing retries its way out of a program that is genuinely
-// still open -- but a process we just killed, and the virus scanner reading a
-// freshly written 90 MB binary, both let go within a second or two, and those
-// must not be reported as "you left the client open". So wait it out first and
-// blame the running program only when waiting has not helped.
+// is one users double-click as well as run in a terminal: double-clicking the
+// exe in sea/ opens the setup page, so the leftover from the last build is
+// regularly the very thing holding the next one up. Nothing retries its way out
+// of a program that is genuinely still open -- but a process we just killed,
+// and the virus scanner reading a freshly written 90 MB binary, both let go
+// within a second or two, and those must not be reported as "you left the
+// client open". So wait it out first and blame the running program only when
+// waiting has not helped.
 const removeOut = () => {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -90,7 +91,8 @@ const removeOut = () => {
       if (attempt >= 20) {
         console.error(`删不掉 ${out}：它正在运行。`);
         console.error('  Windows 不让构建覆盖正在运行的程序，重试多少次都没用。');
-        console.error('  这个程序就是客户端（D-074）——把它关掉再构建。');
+        console.error('  装好的客户端是另一个程序（client\\LingSpark.exe，D-080），但这个');
+        console.error('  文件双击也会开配置页——把它关掉再构建。');
         process.exit(1);
       }
       sleep(250);

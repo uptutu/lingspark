@@ -50,10 +50,16 @@ export interface AgentProfile {
   readonly format: HookFormat;
   /**
    * What proves the agent is installed when its config directory alone does
-   * not: another product can create that directory. WorkBuddy runs the
-   * CodeBuddy engine and leaves a ~/.codebuddy behind on machines that never
-   * had CodeBuddy. Any listed command on PATH, or app in an Applications
-   * folder, counts. Absent: the directory is enough.
+   * not. `~/.cursor` is full of files other tools write -- an MCP server
+   * writes `mcp.json`, a skills installer writes `skills/`, another product's
+   * installer writes `hooks.json` -- so on a machine that has never had Cursor
+   * the directory exists and the client used to report the agent as connected
+   * (D-081). Any listed command on PATH, or app in the platform's usual
+   * install folders, counts. Absent: the directory is enough.
+   *
+   * Only for agents where this is true. Claude Code and Codex keep their own
+   * state in their directories, and a CLI-based rule is wrong for them: Codex
+   * is installed on machines where `codex` is not on PATH.
    */
   readonly installedWhen?: { readonly commands: readonly string[]; readonly apps: readonly string[] };
   /**
@@ -123,6 +129,10 @@ export const AGENTS: readonly AgentProfile[] = [
     // Unused: afterFileEdit fires for file edits only, and takes no matcher.
     writeMatcher: WRITE_TOOLS,
     format: 'cursor',
+    // `~/.cursor` outlives an uninstall and is written by other tools too
+    // (D-081). The app in its usual folder is the proof; the CLI is Cursor's
+    // `cursor-agent`, which is a separate install.
+    installedWhen: { commands: ['cursor'], apps: ['Cursor.app', 'Cursor/Cursor.exe', 'cursor'] },
     source: 'https://cursor.com/docs/agent/hooks',
   },
   {
@@ -137,6 +147,9 @@ export const AGENTS: readonly AgentProfile[] = [
     commandWindows: false,
     writeMatcher: WRITE_TOOLS,
     format: 'claude',
+    // The directory is WorkBuddy's own, but an older CodeBuddy or a leftover
+    // install leaves it behind, so ask for the program too (D-081).
+    installedWhen: { commands: ['workbuddy'], apps: ['WorkBuddy.app', 'WorkBuddy/WorkBuddy.exe'] },
     source: 'https://cloud.tencent.com/document/product/1831/134517',
   },
 ];

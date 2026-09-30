@@ -8,3 +8,28 @@ packages/cli/sea/
 packages/desktop/release/
 .venv/
 .lingspark-review-*.json
+
+# Agent session data (WorkBuddy memory/reports: local only, not part of the repo)
+.workbuddy/
+
+# Logs written at runtime
+logs/
+*.log
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+
+# Installers produced by the desktop build scripts
+*.exe
+*.msi
+*.dmg
+*.deb
+*.AppImage

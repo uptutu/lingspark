@@ -331,4 +331,24 @@ describe('installBinary', () => {
     expect(readFileSync(path.join(dir, 'data', 'bin', process.platform === 'win32' ? 'lingspark.exe' : 'lingspark'), 'utf8')).toBe('v2');
     expect(installedHookCommand(built, built, env())).toEqual(cmd);
   });
+
+  it('keeps the copy it has when a new one cannot be written (D-077)', () => {
+    // A directory standing in for the program: reading it as a file fails on
+    // every platform, which is what Windows does to a program that is running.
+    const built = path.join(dir, 'dist', 'lingspark');
+    mkdirSync(built, { recursive: true });
+    const copy = path.join(dir, 'data', 'bin', process.platform === 'win32' ? 'lingspark.exe' : 'lingspark');
+    mkdirSync(path.dirname(copy), { recursive: true });
+    writeFileSync(copy, 'the version already installed');
+
+    // The old copy keeps working, so the hooks still have something to run.
+    expect(installBinary(built, built, env()).posix).toBe(`"${copy}"`);
+    expect(readFileSync(copy, 'utf8')).toBe('the version already installed');
+  });
+
+  it('still fails when there is no copy to fall back on', () => {
+    const built = path.join(dir, 'dist', 'lingspark');
+    mkdirSync(built, { recursive: true });
+    expect(() => installBinary(built, built, env())).toThrow(InstallError);
+  });
 });

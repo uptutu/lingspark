@@ -11,6 +11,7 @@ import { createJudge } from './judge/factory.js';
 import { isGenerator, type Judge } from './judge/types.js';
 import { msg } from './messages.js';
 import { parseDocument } from './parser/parse.js';
+import { recordShadowHits } from './shadow-report.js';
 import { compareDiagnostics, runPass1 } from './passes/pass1.js';
 import { runPass2, type Pass2Stats, type Uncertain } from './passes/pass2.js';
 import { runPass3, type Pass3Doc, type Pass3Stats } from './passes/pass3.js';
@@ -298,6 +299,7 @@ export function createChecker(opts: CheckerOptions): Checker {
 
     diagnostics.sort(compareDiagnostics);
     shadowDiagnostics.sort(compareDiagnostics);
+    if (shadowDiagnostics.length > 0) recordShadowHits(shadowDiagnostics, opts.pathEnv);
     return {
       ...base,
       diagnostics,
@@ -395,6 +397,7 @@ export function createChecker(opts: CheckerOptions): Checker {
         diagnostics.push(...r.diagnostics.filter(keep));
         shadowDiagnostics.push(...r.shadowDiagnostics.filter(keep));
       }
+      if (shadowDiagnostics.length > 0) recordShadowHits(shadowDiagnostics, opts.pathEnv);
     }
     return { diagnostics, shadowDiagnostics, notes: [...notes], stats };
   };

@@ -13,6 +13,7 @@ import { msg } from './messages.js';
 import { dataDir, findProjectRoot, type PathEnv } from './paths.js';
 import { getDeterministic } from './rules/context.js';
 import { loadRules } from './rules/load.js';
+import { evidenceOf } from './setup.js';
 import './rules/deterministic/index.js';
 
 export type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip';
@@ -182,6 +183,11 @@ export async function checkJudge(opts: DoctorOptions): Promise<DoctorCheck> {
     return { name: d.judge, status: 'fail', detail: err instanceof Error ? err.message : String(err) };
   }
   if (config.judge.backend === null) return { name: d.judge, status: 'warn', detail: msg.judge.notConfigured };
+  // `session` is not a judge this program can call -- the writing agent reviews
+  // in its own conversation and the Stop hook drives that. It is also what the
+  // client writes for a person who has said nothing, so calling it broken
+  // would make a fresh install report a failure out of the box (D-078).
+  if (config.judge.backend === 'session') return { name: d.judge, status: 'ok', detail: msg.judge.inSession };
   const setup = createJudge(config, {
     ...(opts.pathEnv !== undefined ? { pathEnv: opts.pathEnv } : {}),
     ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
@@ -221,13 +227,19 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
   out.push(project.check);
   out.push(...checkRules(opts, project.root));
 
-  for (const { id: agent, configFile } of installableAgents()) {
+  for (const profile of installableAgents()) {
+    const { id: agent, configFile } = profile;
     // Only agents that exist on this machine: a line per agent the user has
     // never installed is noise, not a finding.
     const agentDir = configFile?.[0];
     const present = agentDir !== undefined && existsSync(path.join(home, agentDir));
     const installedInProject = agentDir !== undefined && existsSync(path.join(opts.cwd, ...(configFile ?? [])));
     if (!present && !installedInProject) continue;
+    // A directory another product also creates is not the agent (D-081): say so
+    // here too, so self-check never claims success for something that is gone.
+    if (profile.installedWhen !== undefined && !evidenceOf(profile.installedWhen, { homedir: home, ...(opts.pathEnv !== undefined ? { pathEnv: opts.pathEnv } : {}) })) {
+      out.push({ name: d.programFor(profile.name), status: 'warn', detail: d.programNotFound(profile.name) });
+    }
     for (const scope of ['user', 'project'] as const) {
       const c = checkAgentHooks(agent, scope, { ...opts, homedir: home });
       if (c !== null) out.push(c);

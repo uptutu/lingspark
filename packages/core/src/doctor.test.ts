@@ -82,6 +82,28 @@ describe('runDoctor', () => {
     expect((await runDoctor(opts)).some((c) => c.name.startsWith('cursor'))).toBe(true);
   });
 
+  it('says an agent is not here when only its directory is (D-081)', async () => {
+    // A directory other tools leave behind, and our hook in it: the hook line
+    // below is true, and it still is not a working Cursor.
+    const settings = path.join(root, 'home', '.cursor', 'hooks.json');
+    mkdirSync(path.dirname(settings), { recursive: true });
+    writeFileSync(settings, JSON.stringify(withHooksInstalled({}, 'cursor', { posix: '"/n/lingspark"', windows: '"/n/lingspark"' })));
+    const c = (await runDoctor(opts)).find((x) => x.name === 'Cursor 程序');
+    expect(c?.status).toBe('warn');
+    expect(c?.detail).toContain('没找到 Cursor 本身');
+  });
+
+  it('passes the review mode the client itself recommends (D-078)', async () => {
+    mkdirSync(path.join(root, 'data'), { recursive: true });
+    // What `lingspark ui` writes for a person who has chosen nothing: the
+    // agent reviews in its own conversation. Nothing here can be called, and
+    // nothing is wrong -- so a fresh install must not report a failure.
+    writeFileSync(path.join(root, 'data', 'config.yaml'), 'judge:\n  backend: session\n');
+    const c = (await runDoctor(opts)).find((x) => x.name === '判定后端');
+    expect(c?.status).toBe('ok');
+    expect((await runDoctor(opts)).filter((x) => x.status === 'fail')).toEqual([]);
+  });
+
   it('asks the configured judge one question and reports how it went', async () => {
     mkdirSync(path.join(root, 'data'), { recursive: true });
     writeFileSync(path.join(root, 'data', 'config.yaml'), 'judge:\n  backend: openai-compatible\n  endpoint: http://localhost:9/v1\n  model: m\n');

@@ -42,9 +42,11 @@ function serveWindow(url: string, io: Io, close: () => void): void {
 }
 
 /**
- * A browser that can show a page as a window of its own. Windows and Linux
- * have no one browser to name, so this is a list: the first one installed
- * wins. Windows 10 and 11 always have Edge, so it is always found there.
+ * A browser that can show a page as a window of its own. On Windows this is
+ * what the client falls back to when the machine has no WebView2 runtime, and
+ * on Linux it is the whole client (D-074 / D-080). Windows and Linux have no
+ * one browser to name, so this is a list: the first one installed wins. Windows
+ * 10 and 11 always have Edge, so it is always found there.
  */
 function browserPath(): string | null {
   const roots =
@@ -90,10 +92,14 @@ function linuxBrowserFromAlternatives(): string | null {
 }
 
 /**
- * On Windows and Linux the program is the client (D-061 / D-074): it starts
- * the page as a window of its own -- no tabs, no address bar -- in a profile
- * of its own, so the process we start is that window and its exit means the
- * window was closed. Chromium's `--app` is the same switch Edge honours.
+ * On Windows and Linux the client is the page in a window of its own -- no
+ * tabs, no address bar -- in a profile of its own, so the process we start is
+ * that window and its exit means the window was closed. Chromium's `--app` is
+ * the same switch Edge honours.
+ *
+ * On Windows this is the client's fallback: the client is a WebView2 window of
+ * its own (D-080) and only asks for this when the machine has no WebView2
+ * runtime. Linux has no shell at all, so this is the client there (D-074).
  *
  * `&window=1` is how the page learns it is in that window. The Mac shell says
  * so in its user agent, but nothing sets one here, and the page has to know:
@@ -140,10 +146,15 @@ function openAppWindow(url: string, close: () => void): ChildProcess | null {
 }
 
 /**
- * `lingspark ui`, and what a double-click on the program does: the setup page
- * in a window of its own on Windows and Linux, and in the browser elsewhere
- * (the Mac client has its own shell and starts us with `--window`). Served
- * until the user clicks "done", closes the window, or leaves it idle.
+ * `lingspark ui`, and what a double-click on the command-line program does: the
+ * setup page in a window of its own on Windows and Linux, and in the browser
+ * elsewhere. Served until the user clicks "done", closes the window, or leaves
+ * it idle.
+ *
+ * The Mac and Windows clients are shells of their own that start this with
+ * `--window` and hold its standard input open (D-061 / D-080); on Windows this
+ * is also the client's fallback for a machine with no WebView2 runtime, where
+ * the shell gets out of the way and lets the line below open the window.
  */
 export async function runUi(argv: string[], io: Io): Promise<number> {
   const { values } = parseArgs({

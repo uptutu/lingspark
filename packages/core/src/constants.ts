@@ -51,6 +51,14 @@ export const MAX_FULL_CHECK_BYTES = 200 * 1024;
 export const HOOK_TIMEOUT_POST_S = 15;
 export const HOOK_TIMEOUT_STOP_S = 90;
 
+/**
+ * How long the client waits for an agent's hook command when it runs it once
+ * itself to see whether it works (D-077). Generous, because a single-file
+ * build is a whole Node runtime starting up; the client only does this once
+ * per install, never while the page is being clicked around.
+ */
+export const PROBE_TIMEOUT_MS = 10_000;
+
 /** Process exit codes for `lingspark check` (section 5.1). */
 export const EXIT_OK = 0;
 export const EXIT_HAS_ERRORS = 1;
