@@ -34,7 +34,12 @@ final class Recorder: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     var adaptor: AVAssetWriterInputPixelBufferAdaptor!
     var start: CFTimeInterval = 0
     var frames = 0
-    var lastTime = CMTime.invalid
+    var repeats = 0
+    /// Constant frame rate: frame n is shown at n / fps. A snapshot fills the
+    /// slot its time falls in; slots it skipped over repeat the previous
+    /// frame, so every frame lasts exactly as long as the next.
+    var nextSlot = 0
+    var previous: CVPixelBuffer?
     var finishing = false
 
     func applicationDidFinishLaunching(_ n: Notification) {
@@ -66,6 +71,8 @@ final class Recorder: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     func begin() {
         try? FileManager.default.removeItem(at: outURL)
         writer = try! AVAssetWriter(outputURL: outURL, fileType: .mp4)
+        // Index at the front: a browser can start playing before the end arrives.
+        writer.shouldOptimizeForNetworkUse = true
         input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: W,
@@ -101,9 +108,8 @@ final class Recorder: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             defer { DispatchQueue.main.async { self.tick() } }
             guard let image, !self.finishing, self.input.isReadyForMoreMediaData,
                   let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
-            let t = CMTime(seconds: (CACurrentMediaTime() - self.start) / slow, preferredTimescale: 6000)
-            // Evenly spaced: no two frames closer than one frame apart.
-            if self.lastTime.isValid && CMTimeGetSeconds(t - self.lastTime) < 0.98 / fps { return }
+            let slot = Int(((CACurrentMediaTime() - self.start) / slow * fps).rounded(.down))
+            if slot < self.nextSlot { return }
             guard let pool = self.adaptor.pixelBufferPool else { return }
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
@@ -115,8 +121,17 @@ final class Recorder: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             ctx.interpolationQuality = .high
             ctx.draw(cg, in: CGRect(x: 0, y: 0, width: W, height: H))
             CVPixelBufferUnlockBaseAddress(buffer, [])
-            if self.adaptor.append(buffer, withPresentationTime: t) {
-                self.lastTime = t
+            let at = { (n: Int) in CMTime(value: CMTimeValue(n), timescale: CMTimeScale(fps)) }
+            if let previous = self.previous {
+                while self.nextSlot < slot, self.input.isReadyForMoreMediaData {
+                    self.adaptor.append(previous, withPresentationTime: at(self.nextSlot))
+                    self.nextSlot += 1
+                    self.repeats += 1
+                }
+            }
+            if self.adaptor.append(buffer, withPresentationTime: at(slot)) {
+                self.nextSlot = slot + 1
+                self.previous = buffer
                 self.frames += 1
             }
         }
@@ -136,7 +151,8 @@ final class Recorder: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         input.markAsFinished()
         writer.finishWriting {
             let video = elapsed / slow
-            print(String(format: "%d frames, %.1f s of video, %.1f fps -> %@", self.frames, video, Double(self.frames) / video, outURL.path))
+            print(String(format: "%d frames (%d repeated to keep the rate), %.1f s of video at a constant %.0f fps -> %@",
+                         self.frames + self.repeats, self.repeats, video, fps, outURL.path))
             exit(self.writer.status == .completed ? 0 : 1)
         }
     }

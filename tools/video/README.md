@@ -13,7 +13,7 @@
 V=$(mktemp -d); mkdir -p $V/home/{.claude,.codex,.cursor,.workbuddy} $V/data
 S=$PWD/packages/cli/sea/lingspark   # 先 pnpm build:sea
 (cd $V && HOME=$V/home LINGSPARK_DATA_DIR=$V/data $S ui --no-open > $V/ui.out &)   # 记下打印的地址和 t=
-node tools/video/proxy.mjs --port 8790 --target http://127.0.0.1:<端口> --home $V/home --data $V/data --sea $S --slow 5 &
+node tools/video/proxy.mjs --port 8790 --target http://127.0.0.1:<端口> --home $V/home --data $V/data --sea $S --slow 12 &
 xcrun swiftc -O tools/video/record.swift -o /tmp/record
-/tmp/record "http://127.0.0.1:8790/stage?t=<令牌>" docs/lingspark-demo.mp4 5 60   # 慢放倍数要和 --slow 一致
+/tmp/record "http://127.0.0.1:8790/stage?t=<令牌>" docs/lingspark-demo.mp4 12 60   # 慢放倍数要和 --slow 一致；12 倍可得恒定 60 帧
 ```
