@@ -13,6 +13,8 @@ import { agentBackendUsable, resolveAuto } from './judge/factory.js';
 import { applyChange, configFileFor, installBinary, installedBinaryDir, planInstall, planUninstall } from './install/install.js';
 import { findClaudeCli } from './judge/agent-cli.js';
 import { findCodexCli } from './judge/codex-cli.js';
+import { findPiCli, piAuthFile } from './judge/pi-cli.js';
+import { findOpencodeCli, opencodeAuthFile } from './judge/opencode-cli.js';
 import { getCredential } from './judge/credentials.js';
 import { msg } from './messages.js';
 import { dataDir, dataPaths, type PathEnv } from './paths.js';
@@ -194,6 +196,10 @@ export function judgeOptions(e: SetupEnv = {}): JudgeOption[] {
   const codex = findCodexCli();
   const codexOk = codex !== null && (e.codexLoggedIn ?? defaultCodexLoggedIn)(codex);
   const claude = findClaudeCli();
+  const pi = findPiCli();
+  const piOk = pi !== null && existsSync(piAuthFile(env?.homedir ?? os.homedir()));
+  const opencode = findOpencodeCli();
+  const opencodeOk = opencode !== null && existsSync(opencodeAuthFile(env?.homedir ?? os.homedir()));
   const has = (p: 'anthropic' | 'typesafe'): boolean => getCredential(p, env) !== null;
   const auto = resolveAuto(undefined, env);
   return [
@@ -234,6 +240,18 @@ export function judgeOptions(e: SetupEnv = {}): JudgeOption[] {
       label: 'Claude',
       available: claude !== null,
       detail: claude === null ? msg.setup.claudeMissing : msg.setup.claudeFound,
+    },
+    {
+      backend: 'pi-cli',
+      label: 'pi',
+      available: piOk,
+      detail: pi === null ? msg.setup.piMissing : piOk ? msg.setup.piFound : msg.setup.piMissing,
+    },
+    {
+      backend: 'opencode-cli',
+      label: 'opencode',
+      available: opencodeOk,
+      detail: opencode === null ? msg.setup.opencodeMissing : opencodeOk ? msg.setup.opencodeFound : msg.setup.opencodeMissing,
     },
   ];
 }

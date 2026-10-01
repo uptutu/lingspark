@@ -6,6 +6,8 @@ import type { PathEnv } from '../paths.js';
 import { resolveConfig } from '../config/resolve.js';
 import { ClaudeCliJudge } from './agent-cli.js';
 import { CodexCliJudge, readCodexEvents } from './codex-cli.js';
+import { PiCliJudge, readPiEvents } from './pi-cli.js';
+import { OpencodeCliJudge, readOpencodeEvents } from './opencode-cli.js';
 import { AnthropicJudge } from './anthropic.js';
 import { cacheKey, JudgeCache, sweepCache } from './cache.js';
 import { getCredential } from './credentials.js';
@@ -302,6 +304,69 @@ process.stdin.on('data', (c) => (input += c)).on('end', () => {
 
   it('ignores lines that are not events', () => {
     expect(readCodexEvents('warning: something\n{"type":"turn.failed","error":{"message":"quota"}}\n').error).toBe('quota');
+  });
+});
+
+describe('PiCliJudge', () => {
+  it('reduces the event stream to the assistant reply and usage', () => {
+    const usage = { input: 415, output: 22, cacheRead: 0, cacheWrite: 0, totalTokens: 437 };
+    const reply = JSON.stringify({ S201: { answer: true, confidence: 0.8 } });
+    const ev = readPiEvents(
+      [
+        { type: 'session', id: 's' },
+        { type: 'message_end', message: { role: 'user', content: [{ type: 'text', text: '问' }] } },
+        { type: 'message_end', message: { role: 'assistant', content: [{ type: 'thinking', thinking: '想' }, { type: 'text', text: reply }], usage } },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n'),
+    );
+    expect(ev.text).toBe(reply);
+    expect(ev.inputTokens).toBe(415);
+    expect(ev.outputTokens).toBe(22);
+    // Thinking-only or empty replies count as no answer.
+    expect(readPiEvents(JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'thinking', thinking: '想' }] } })).text).toBeNull();
+    expect(readPiEvents('not json\n').text).toBeNull();
+  });
+
+  it('builds from the factory with an explicit command and no model', () => {
+    const cli = path.join(root, 'pi-cli.js');
+    writeFileSync(cli, '// fake\n');
+    const r = createJudge(resolveConfig({ projectRoot: null, project: null, user: { judge: { backend: 'pi-cli', command: cli } } }), { pathEnv: env });
+    expect(r.judge?.id).toBe('pi-cli:default');
+  });
+
+  it('refuses to run while offline', async () => {
+    await expect(new PiCliJudge('/nonexistent', { offline: true, pathEnv: env }).judge(REQ, ctx())).rejects.toBeInstanceOf(OfflineError);
+  });
+});
+
+describe('OpencodeCliJudge', () => {
+  it('reduces the event stream to the assistant text and usage', () => {
+    const reply = JSON.stringify({ S201: { answer: true, confidence: 0.8 } });
+    const ev = readOpencodeEvents(
+      [
+        { type: 'step_start', part: { type: 'step-start' } },
+        { type: 'text', part: { type: 'text', text: reply } },
+        { type: 'step_finish', part: { type: 'step-finish', reason: 'stop', tokens: { total: 61915, input: 11141, output: 16 } } },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join('\n'),
+    );
+    expect(ev.text).toBe(reply);
+    expect(ev.inputTokens).toBe(11141);
+    expect(ev.outputTokens).toBe(16);
+    expect(readOpencodeEvents('').text).toBeNull();
+  });
+
+  it('builds from the factory with an explicit command and a model', () => {
+    const cli = path.join(root, 'opencode.exe');
+    writeFileSync(cli, 'fake\n');
+    const r = createJudge(resolveConfig({ projectRoot: null, project: null, user: { judge: { backend: 'opencode-cli', command: cli, model: 'kimi-code-plan-cn/kimi-for-coding' } } }), { pathEnv: env });
+    expect(r.judge?.id).toBe('opencode-cli:kimi-code-plan-cn/kimi-for-coding');
+  });
+
+  it('refuses to run while offline', async () => {
+    await expect(new OpencodeCliJudge('/nonexistent', { offline: true, pathEnv: env }).judge(REQ, ctx())).rejects.toBeInstanceOf(OfflineError);
   });
 });
 

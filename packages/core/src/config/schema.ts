@@ -29,6 +29,9 @@ export const judgeBackendSchema = z.enum([
   'anthropic',
   'agent-cli',
   'codex-cli',
+  // The user's own pi / opencode, signed in to a provider already (D-094).
+  'pi-cli',
+  'opencode-cli',
   'so1-local',
 ]);
 export type JudgeBackendId = z.infer<typeof judgeBackendSchema>;

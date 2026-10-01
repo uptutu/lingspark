@@ -7,6 +7,8 @@ import { msg } from '../messages.js';
 import type { PathEnv } from '../paths.js';
 import { ClaudeCliJudge, findClaudeCli } from './agent-cli.js';
 import { CodexCliJudge, findCodexCli } from './codex-cli.js';
+import { PiCliJudge, findPiCli, piAuthFile } from './pi-cli.js';
+import { OpencodeCliJudge, findOpencodeCli, opencodeAuthFile } from './opencode-cli.js';
 import { AnthropicJudge } from './anthropic.js';
 import { credentialHint, getCredential } from './credentials.js';
 import { isLocalUrl, type NetworkContext } from './network.js';
@@ -15,16 +17,23 @@ import { TypesafeJudge } from './typesafe.js';
 import { recentlySignedOut } from './signin.js';
 import type { Judge } from './types.js';
 
-type AgentBackend = 'agent-cli' | 'codex-cli';
+type AgentBackend = 'agent-cli' | 'codex-cli' | 'pi-cli' | 'opencode-cli';
 
 /** With no writing agent (a person running `lingspark check`), the ones tried in turn. */
-const WITHOUT_AGENT: readonly AgentBackend[] = ['codex-cli', 'agent-cli'];
+const WITHOUT_AGENT: readonly AgentBackend[] = ['codex-cli', 'agent-cli', 'pi-cli', 'opencode-cli'];
 
 /** Whether an agent CLI can answer now: installed, signed in as far as we can tell cheaply. */
 export function agentBackendUsable(backend: AgentBackend, env?: PathEnv): boolean {
   if (recentlySignedOut(backend, env)) return false;
+  const home = env?.homedir ?? os.homedir();
   if (backend === 'codex-cli') {
-    return findCodexCli() !== null && existsSync(path.join(env?.homedir ?? os.homedir(), '.codex', 'auth.json'));
+    return findCodexCli() !== null && existsSync(path.join(home, '.codex', 'auth.json'));
+  }
+  if (backend === 'pi-cli') {
+    return findPiCli() !== null && existsSync(piAuthFile(home));
+  }
+  if (backend === 'opencode-cli') {
+    return findOpencodeCli() !== null && existsSync(opencodeAuthFile(home));
   }
   return findClaudeCli() !== null;
 }
@@ -87,6 +96,8 @@ export function createJudge(
     j.backend === 'anthropic' ||
     j.backend === 'agent-cli' ||
     j.backend === 'codex-cli' ||
+    j.backend === 'pi-cli' ||
+    j.backend === 'opencode-cli' ||
     (j.backend === 'openai-compatible' && (j.endpoint === null || !isLocalUrl(j.endpoint)));
   if (net.offline && remote) return { judge: null, problem: msg.judge.offline };
 
@@ -146,6 +157,18 @@ export function createJudge(
       const cli = findCodexCli(j.command);
       if (cli === null) return { judge: null, problem: msg.judge.noCodexCli };
       return { judge: new CodexCliJudge(cli, net, j.model ?? undefined) };
+    }
+
+    case 'pi-cli': {
+      const cli = findPiCli(j.command);
+      if (cli === null) return { judge: null, problem: msg.judge.noPiCli };
+      return { judge: new PiCliJudge(cli, net, j.model ?? undefined) };
+    }
+
+    case 'opencode-cli': {
+      const cli = findOpencodeCli(j.command);
+      if (cli === null) return { judge: null, problem: msg.judge.noOpencodeCli };
+      return { judge: new OpencodeCliJudge(cli, net, j.model ?? undefined) };
     }
 
     case 'mock':

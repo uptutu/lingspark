@@ -11,6 +11,7 @@ packages/desktop/release/
 
 # Agent session data (WorkBuddy memory/reports: local only, not part of the repo)
 .workbuddy/
+.omo/
 
 # Logs written at runtime
 logs/

@@ -361,7 +361,8 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
   judge: {
     notConfigured:
       '没有配置判定后端，语义检查（第 2 遍）跳过了。在用户级配置的 judge.backend 里选一个：' +
-      'agent-cli（借用本机已登录的 Claude Code）、codex-cli（借用本机已登录的 Codex）、anthropic、typesafe（Jev）或 openai-compatible。',
+      'agent-cli（借用本机已登录的 Claude Code）、codex-cli（借用本机已登录的 Codex）、' +
+      'pi-cli（借用本机已配置凭证的 pi）、opencode-cli（借用本机已登录的 opencode）、anthropic、typesafe（Jev）或 openai-compatible。',
     missingKey: (who: string, hint: string) => `判定后端 ${who} 需要 API key，没有找到。请放在 ${hint}。`,
     needsEndpoint: 'openai-compatible 需要在用户级配置里写 judge.endpoint，例如 https://api.deepseek.com/v1。',
     needsModel: 'openai-compatible 需要写 judge.model，例如 deepseek-chat。',
@@ -378,6 +379,10 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
       'Claude Code 需要在终端里运行一次它的命令行并登录。',
     noCodexCli:
       '找不到 Codex 的命令行。装过 Codex 命令行或 ChatGPT 桌面版，或在用户级配置的 judge.command 里写上它的路径。',
+    noPiCli:
+      '找不到 pi 的命令行。npm 全局装过 pi（@earendil-works/pi-coding-agent），或在用户级配置的 judge.command 里写上它的路径。',
+    noOpencodeCli:
+      '找不到 opencode 的命令行。npm 全局装过 opencode-ai，或在用户级配置的 judge.command 里写上它的路径。',
     mockInConfig: 'judge.backend 不能是 mock：那是测试用的假判定器，用它做真实检查会报出凭空编造的问题。',
     notYet: (backend: string, milestone: string) => `判定后端 ${backend} 在 ${milestone} 交付，本版本还不能用。`,
     failed: (detail: string) => `判定器调用失败，这部分语义检查跳过了：${detail}`,
@@ -458,6 +463,10 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
     codexLoggedOut: '需要先在 ChatGPT 桌面版里登录',
     claudeMissing: '这台电脑上没有 Claude Code',
     claudeFound: '用你的会员；需要登录过，点"试一下"确认',
+    piMissing: '这台电脑上没有 pi（npm 全局安装 @earendil-works/pi-coding-agent）',
+    piFound: '用 pi 已配置的 provider 凭证，不另设 key',
+    opencodeMissing: '这台电脑上没有 opencode（npm 全局安装 opencode-ai）',
+    opencodeFound: '用 opencode 已登录的 provider，不另设 key',
     keyFound: '已开通，按用量付费',
     keyMissing: '需要开通',
     agentOn: (id: string) => `${id}：已启用`,

@@ -9,4 +9,6 @@ export * from './openai-compatible.js';
 export * from './anthropic.js';
 export * from './agent-cli.js';
 export * from './codex-cli.js';
+export * from './pi-cli.js';
+export * from './opencode-cli.js';
 export * from './factory.js';
