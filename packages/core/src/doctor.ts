@@ -8,7 +8,8 @@ import { installableAgents, type AgentId } from './agents.js';
 import { loadConfig } from './config/load.js';
 import { createJudge } from './judge/factory.js';
 import { configFileFor, type InstallScope } from './install/install.js';
-import { hasOurHooks, ourCommands } from './install/merge.js';
+import { agentProfile } from './agents.js';
+import { hasOurHooks, ourCommands, ourCommandsInText } from './install/merge.js';
 import { msg } from './messages.js';
 import { dataDir, findProjectRoot, type PathEnv } from './paths.js';
 import { getDeterministic } from './rules/context.js';
@@ -120,11 +121,38 @@ function checkAgentHooks(
   scope: InstallScope,
   opts: DoctorOptions,
 ): DoctorCheck | null {
+  const profile = agentProfile(agent);
   const file = configFileFor(agent, scope, {
     ...(opts.homedir !== undefined ? { homedir: opts.homedir } : {}),
     projectDir: opts.cwd,
   });
   const name = d.hookFor(agent, scope);
+
+  // Bridge agents (pi, opencode): the "config" is a generated JS/TS bridge
+  // file whose embedded commands are matched as text (D-102). The executable
+  // the command points at is checked by checkAgentHooks only for JSON configs;
+  // here the bridge file's freshness is enforced by refreshInstall, like the
+  // other agents.
+  if (profile?.bridge !== undefined) {
+    if (!existsSync(file)) {
+      return scope === 'user' ? { name, status: 'warn', detail: d.notInstalled(agent) } : null;
+    }
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (err: unknown) {
+      return { name, status: 'fail', detail: d.agentConfigBroken(file, String(err)) };
+    }
+    const commands = ourCommandsInText(text);
+    const hasPost = commands.some((c) => c.includes('--event post-tool-use'));
+    const hasStop = commands.some((c) => c.includes('--event stop'));
+    if (!hasPost && !hasStop) {
+      return scope === 'user' ? { name, status: 'warn', detail: d.notInstalled(agent) } : null;
+    }
+    if (!hasPost || !hasStop) return { name, status: 'warn', detail: d.partiallyInstalled(file) };
+    return { name, status: 'ok', detail: file };
+  }
+
   if (!existsSync(file)) {
     return scope === 'user' ? { name, status: 'warn', detail: d.notInstalled(agent) } : null;
   }
@@ -231,9 +259,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<DoctorCheck[]> {
     const { id: agent, configFile } = profile;
     // Only agents that exist on this machine: a line per agent the user has
     // never installed is noise, not a finding.
-    const agentDir = configFile?.[0];
-    const present = agentDir !== undefined && existsSync(path.join(home, agentDir));
-    const installedInProject = agentDir !== undefined && existsSync(path.join(opts.cwd, ...(configFile ?? [])));
+    const marker = profile.dirMarker ?? (configFile === null ? undefined : [configFile[0] as string]);
+    const present = marker !== undefined && existsSync(path.join(home, ...marker));
+    const installedInProject = configFile !== null && existsSync(path.join(opts.cwd, ...configFile));
     if (!present && !installedInProject) continue;
     // A directory another product also creates is not the agent (D-081): say so
     // here too, so self-check never claims success for something that is gone.

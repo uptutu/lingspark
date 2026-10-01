@@ -37,6 +37,13 @@ export type Verification = 'docs' | 'community';
  */
 export type HookFormat = 'claude' | 'cursor';
 
+/**
+ * Agents without a shell-hook config load a JS/TS extension instead; lingspark
+ * ships a generated bridge file that forwards their events to the same hook
+ * commands (D-102). `configFile` is then the bridge file itself.
+ */
+export type BridgeKind = 'pi-extension' | 'opencode-plugin';
+
 export interface AgentProfile {
   readonly id: string;
   readonly name: string;
@@ -48,6 +55,21 @@ export interface AgentProfile {
   /** Tool-name pattern for PostToolUse. Every agent documented so far takes `A|B` alternation. */
   readonly writeMatcher: string;
   readonly format: HookFormat;
+  /** Set for extension-loading agents (pi, opencode); installation writes the bridge file instead of a hook config. */
+  readonly bridge?: BridgeKind;
+  /**
+   * The agent's PostToolUse feedback blocks the write itself (pi returns
+   * block, opencode throws). "Tell once" dedup would let a retried write
+   * through the second time, so these agents are told every error on every
+   * write (D-102).
+   */
+  readonly blockingPost?: boolean;
+  /**
+   * Directory (segments under the home directory) whose existence means the
+   * agent has been used here. Defaults to the config file's first segment;
+   * opencode overrides it because its config lives in the shared `~/.config`.
+   */
+  readonly dirMarker?: readonly string[];
   /**
    * What proves the agent is installed when its config directory alone does
    * not. `~/.cursor` is full of files other tools write -- an MCP server
@@ -74,7 +96,7 @@ export interface AgentProfile {
    * user needs no second product (D-055). Absent: the agent has no CLI
    * lingspark can drive yet, and auto falls back to another signed-in one.
    */
-  readonly judgeBackend?: 'agent-cli' | 'codex-cli';
+  readonly judgeBackend?: 'agent-cli' | 'codex-cli' | 'pi-cli' | 'opencode-cli';
   /** What turns this agent's own judging on when it is off, in the user's words (D-056). */
   readonly selfReviewStep?: string;
   /** Where the facts in this profile came from. */
@@ -152,6 +174,43 @@ export const AGENTS: readonly AgentProfile[] = [
     installedWhen: { commands: ['workbuddy'], apps: ['WorkBuddy.app', 'WorkBuddy/WorkBuddy.exe'] },
     source: 'https://cloud.tencent.com/document/product/1831/134517',
   },
+  {
+    id: 'pi',
+    name: 'pi',
+    verification: 'docs',
+    // The bridge extension itself; ~/.pi/agent/extensions/*.ts auto-loads.
+    // Facts from the bundled docs/extensions.md and a live probe (D-102).
+    configFile: ['.pi', 'agent', 'extensions', 'lingspark.ts'],
+    commandWindows: false,
+    // Unused by the bridge: the extension subscribes to tool_call itself.
+    writeMatcher: 'write|edit|bash|powershell',
+    format: 'claude',
+    bridge: 'pi-extension',
+    // The bridge blocks the write itself, so PostToolUse feedback must not be
+    // deduped: a retried write would pass the second time (D-102).
+    blockingPost: true,
+    judgeBackend: 'pi-cli',
+    selfReviewStep: '在 pi 里配置一个 provider（pi auth），LingSpark 就能借它审稿',
+    source: 'bundled docs/extensions.md of @earendil-works/pi-coding-agent (probed 2026-10-01)',
+  },
+  {
+    id: 'opencode',
+    name: 'opencode',
+    verification: 'docs',
+    // The bridge plugin; loaded via the file:// entry install adds to
+    // opencode.json. Facts probed live 2026-10-01 (D-102).
+    configFile: ['.config', 'opencode', 'plugins', 'lingspark.js'],
+    commandWindows: false,
+    writeMatcher: 'write|edit|multiedit|patch|apply_patch|bash',
+    format: 'claude',
+    bridge: 'opencode-plugin',
+    blockingPost: true,
+    dirMarker: ['.config', 'opencode'],
+    judgeBackend: 'opencode-cli',
+    selfReviewStep: '在 opencode 里登录一个 provider，LingSpark 就能借它审稿',
+    afterInstall: '重开 opencode 后生效：正在运行的会话不会重读配置。',
+    source: 'https://opencode.ai/docs/plugins (probed 2026-10-01)',
+  },
 ];
 
 /**
@@ -173,6 +232,8 @@ export const AGENT_DIRS: ReadonlySet<string> = new Set([
   '.gemini',
   '.windsurf',
   '.github',
+  '.pi',
+  '.opencode',
 ]);
 
 export type AgentId = string;

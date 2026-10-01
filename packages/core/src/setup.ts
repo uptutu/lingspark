@@ -5,12 +5,13 @@ import path from 'node:path';
 import { awaitFirstCall, heardFrom, waitingAgents } from './hook/waiting.js';
 import { probeHook, type HookProbe } from './hook/probe.js';
 import { isMap, parseDocument } from 'yaml';
-import { AGENTS, agentConfigFile, type AgentProfile } from './agents.js';
+import { AGENTS, agentConfigFile, agentProfile, type AgentProfile } from './agents.js';
 import type { JudgeBackendId } from './config/schema.js';
 import { writeFileAtomic } from './fsutil.js';
-import { ourCommands } from './install/merge.js';
+import { ourCommands, ourCommandsInText, withPluginInstalled, withPluginRemoved } from './install/merge.js';
+import { bridgeContent, bridgePath, opencodePluginUrl, removeBridge, writeBridge } from './install/bridge.js';
 import { agentBackendUsable, resolveAuto } from './judge/factory.js';
-import { applyChange, configFileFor, installBinary, installedBinaryDir, planInstall, planUninstall } from './install/install.js';
+import { applyChange, configFileFor, installBinary, installedBinaryDir, planChange, planInstall, planUninstall } from './install/install.js';
 import { findClaudeCli } from './judge/agent-cli.js';
 import { findCodexCli } from './judge/codex-cli.js';
 import { findPiCli, piAuthFile } from './judge/pi-cli.js';
@@ -95,19 +96,25 @@ const home = (e: SetupEnv): string => e.homedir ?? os.homedir();
 const nameOf = (id: string): string => AGENTS.find((a) => a.id === id)?.name ?? id;
 
 function hasOurHook(file: string): boolean {
-  try {
-    return ourCommands(JSON.parse(readFileSync(file, 'utf8'))).length > 0;
-  } catch {
-    return false;
-  }
+  return ourCommandsIn(file).length > 0;
 }
 
-/** Our hook commands in a config file, empty when it is missing or unreadable. */
+/**
+ * Our hook commands in a config file, empty when it is missing or unreadable.
+ * Bridge files (pi/opencode) are not JSON: their commands are matched as text
+ * (D-102), so detection treats a generated bridge exactly like a config.
+ */
 function ourCommandsIn(file: string): string[] {
+  let text: string;
   try {
-    return ourCommands(JSON.parse(readFileSync(file, 'utf8')));
+    text = readFileSync(file, 'utf8');
   } catch {
     return [];
+  }
+  try {
+    return ourCommands(JSON.parse(text));
+  } catch {
+    return ourCommandsInText(text);
   }
 }
 
@@ -159,9 +166,9 @@ export function agentStatuses(e: SetupEnv = {}): AgentStatus[] {
   const waiting = new Set(waitingAgents(e.pathEnv));
   return AGENTS.filter((a) => a.configFile !== null).map((a: AgentProfile) => {
     const file = agentConfigFile(a, 'user', { homedir: home(e), projectDir: process.cwd() });
-    const dir = a.configFile?.[0];
+    const dir = a.dirMarker ?? (a.configFile === null ? undefined : [a.configFile[0] as string]);
     const installed = file !== null && existsSync(file) && hasOurHook(file);
-    const dirFound = dir !== undefined && existsSync(path.join(home(e), dir));
+    const dirFound = dir !== undefined && existsSync(path.join(home(e), ...dir));
     const found = a.installedWhen === undefined || evidenceOf(a.installedWhen, e);
     return {
       id: a.id,
@@ -296,6 +303,10 @@ export function enableAgents(ids: readonly string[], e: SetupEnv = {}): AgentCha
   const command = installBinary(e.binary, e.binary, e.pathEnv);
   return ids.map((id) => {
     try {
+      const profile = agentProfile(id);
+      if (profile?.bridge !== undefined) {
+        return enableBridge(profile, command, e);
+      }
       const file = configFileFor(id, 'user', { homedir: home(e) });
       const change = planInstall(file, id, command);
       applyChange(change);
@@ -306,6 +317,31 @@ export function enableAgents(ids: readonly string[], e: SetupEnv = {}): AgentCha
       return { id, ok: false, message: err instanceof Error ? err.message : String(err) };
     }
   });
+}
+
+/**
+ * Connects an extension-loading agent: writes its bridge file, and for
+ * opencode also names the bridge in opencode.json's plugin array (D-102).
+ */
+function enableBridge(profile: AgentProfile, command: ReturnType<typeof installBinary>, e: SetupEnv): AgentChange {
+  const id = profile.id;
+  const content = bridgeContent(profile, command);
+  if (content === null) return { id, ok: false, message: msg.install.unknownAgent(id) };
+  const file = bridgePath(profile, home(e));
+  const changed = writeBridge(file, content);
+  let configChanged = false;
+  if (profile.bridge === 'opencode-plugin') {
+    const cfg = path.join(home(e), '.config', 'opencode', 'opencode.json');
+    const change = planChange(cfg, (c) => withPluginInstalled(c, opencodePluginUrl(profile, home(e))));
+    applyChange(change);
+    configChanged = change.changed;
+  }
+  if (changed || configChanged) awaitFirstCall(id, e.pathEnv);
+  return {
+    id,
+    ok: true,
+    message: changed || configChanged ? msg.setup.agentOn(nameOf(id)) : msg.setup.agentAlreadyOn(nameOf(id)),
+  };
 }
 
 /**
@@ -346,6 +382,19 @@ function hooksRunThisInstall(id: string, e: SetupEnv): boolean {
 export function disableAgents(ids: readonly string[], e: SetupEnv = {}): AgentChange[] {
   return ids.map((id) => {
     try {
+      const profile = agentProfile(id);
+      if (profile?.bridge !== undefined) {
+        const removed = removeBridge(bridgePath(profile, home(e)));
+        let configChanged = false;
+        if (profile.bridge === 'opencode-plugin') {
+          const cfg = path.join(home(e), '.config', 'opencode', 'opencode.json');
+          const change = planChange(cfg, (c) => withPluginRemoved(c, opencodePluginUrl(profile, home(e))));
+          applyChange(change);
+          configChanged = change.changed;
+        }
+        heardFrom(id, e.pathEnv);
+        return { id, ok: true, message: removed || configChanged ? msg.setup.agentOff(nameOf(id)) : msg.setup.agentAlreadyOn(nameOf(id)) };
+      }
       const file = configFileFor(id, 'user', { homedir: home(e) });
       applyChange(planUninstall(file));
       heardFrom(id, e.pathEnv);

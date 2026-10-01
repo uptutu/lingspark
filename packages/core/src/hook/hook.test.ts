@@ -312,6 +312,16 @@ describe('runHook', () => {
     expect(((await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps))).exitCode).toBe(0);
   });
 
+  it('re-blocks pi on every write of the same bad document (D-102)', async () => {
+    // pi acts on PostToolUse feedback by blocking the write itself; the
+    // "tell once" dedup would let the model's retry through on the second,
+    // identical write. Found live 2026-10-01.
+    expect(((await runHook(post(fx, fx.doc), 'pi', 'post-tool-use', fx.deps))).exitCode).toBe(2);
+    const retry = await runHook(post(fx, fx.doc), 'pi', 'post-tool-use', fx.deps);
+    expect(retry.exitCode).toBe(2);
+    expect(retry.stderr).toContain('[D111]');
+  });
+
   it('blocks Stop while errors remain, at most once per turn', async () => {
     await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
     const first = await runHook(stop(fx), 'claude-code', 'stop', fx.deps);

@@ -218,31 +218,35 @@ async function onPostToolUse(input: HookInput, files: readonly string[], deps: H
     enqueueWarm(input.sessionId, results.map((r) => r.absPath), env);
   const warm = startWarm ? { warmSession: input.sessionId } : {};
 
-  // After a write, errors only -- warnings wait for Stop (5.3) -- and only
-  // ones this session has not already been told about. A model writing a
-  // long document in several edits should hear about an early error once,
-  // not after every later edit. The loop guard does not run here: on Claude
-  // Code a PostToolUse exit 2 cannot block anything (DECISIONS V-4), so there
-  // is no loop to guard, and counting here would spend the guard before Stop
-  // -- the real enforcement point -- ever saw the error (DECISIONS D-020).
-  // Cursor ignores whatever a file-edit hook says, so there nothing is told
-  // now: the errors stay unmarked and Stop reports them.
+  // Blocking agents (pi, opencode) must hear every error on every write: the
+  // "tell once" dedup below would otherwise be a bypass -- the model retries
+  // the same write and the second, deduped call passes (found live, D-102).
   if (input.cursor) {
     for (const r of results) recordRun(input, r, [], 0, agentSuppressCount(attributions.get(r.absPath)), env);
     trySave(store, env);
     return { ...PASS, ...warm };
   }
 
+  // Errors only -- warnings wait for Stop (5.3) -- and, for agents that
+  // cannot act on PostToolUse feedback, only ones this session has not
+  // already been told about. A model writing a long document in several
+  // edits should hear about an early error once, not after every later edit.
+  // The loop guard does not run here: on Claude Code a PostToolUse exit 2
+  // cannot block anything (DECISIONS V-4), so there is no loop to guard, and
+  // counting here would spend the guard before Stop -- the real enforcement
+  // point -- ever saw the error (DECISIONS D-020). Cursor ignores whatever a
+  // file-edit hook says, so there nothing is told now: the errors stay
+  // unmarked and Stop reports them.
   const told = new Set(store.snapshot.postReported);
-  const fresh = results.flatMap((r) =>
-    r.diagnostics.filter((d) => d.severity === 'error' && !told.has(d.fingerprint)),
-  );
-  store.markPostReported(fresh.map((d) => d.fingerprint));
+  const allErrors = results.flatMap((r) => r.diagnostics.filter((d) => d.severity === 'error'));
+  const unseen = allErrors.filter((d) => !told.has(d.fingerprint));
+  const fresh = input.blockingPost ? allErrors : unseen;
+  if (!input.blockingPost) store.markPostReported(unseen.map((d) => d.fingerprint));
 
   for (const r of results) {
     recordRun(input, r, fresh.filter((d) => d.file === r.absPath), 0, agentSuppressCount(attributions.get(r.absPath)), env);
   }
-  recordIntercepts(input.agent, 'write', fresh, env);
+  recordIntercepts(input.agent, 'write', unseen, env);
   // D-091: machine-proposed glossary term pairs, for `lingspark terms`.
   // Fail-open by construction: appendJsonl never throws.
   for (const r of results) {

@@ -1,7 +1,9 @@
 import { parseArgs } from 'node:util';
+import os from 'node:os';
 import {
   AGENTS,
   AGENT_IDS,
+  applyBridge,
   applyChange,
   installableAgents,
   configFileFor,
@@ -12,6 +14,7 @@ import {
   InstallError,
   lineDiff,
   msg,
+  planBridge,
   planInstall,
   planUninstall,
   type InstallScope,
@@ -64,11 +67,41 @@ export function runInstall(argv: string[], io: Io, mode: 'install' | 'uninstall'
   }
 
   try {
-    const file = configFileFor(agent, scope);
+    const profile = AGENTS.find((a) => a.id === agent);
     const dryRun = values['dry-run'] === true;
     // Copy first, then point the hook at the copy -- never at a build output
     // that the next rebuild wipes (D-033). A dry run copies nothing.
     const command = mode === 'install' ? (dryRun ? installedHookCommand() : installBinary()) : null;
+
+    if (profile?.bridge !== undefined) {
+      // Extension-loading agents: the "config" is a generated bridge file.
+      // Project-scope bridges do not exist yet; the bridge lives in the home.
+      if (scope !== 'user') {
+        io.err(`${msg.cli.badOption('scope', scope, 'user')}\n`);
+        return EXIT_INTERNAL_ERROR;
+      }
+      const cmd = command ?? installedHookCommand();
+      const change = planBridge(profile, mode, cmd, os.homedir());
+      if (!change.changed) {
+        io.out(`${msg.install.nothingToDo(change.file)}\n`);
+        return EXIT_OK;
+      }
+      if (dryRun) {
+        io.out(`${msg.install.dryRunHead(change.file, change.existed)}\n\n${lineDiff(change.before, change.after)}\n`);
+        return EXIT_OK;
+      }
+      applyBridge(profile, mode, cmd, os.homedir());
+      const lines = [
+        mode === 'install' ? msg.install.installed(agent, change.file) : msg.install.uninstalled(agent, change.file),
+      ];
+      if (mode === 'install') lines.push(msg.install.copied(installedBinaryPath()));
+      if (mode === 'install') lines.push('', msg.install.restartHint, msg.install.scopeHint);
+      if (mode === 'install' && profile.afterInstall !== undefined) lines.push('', profile.afterInstall);
+      io.out(`${lines.join('\n')}\n`);
+      return EXIT_OK;
+    }
+
+    const file = configFileFor(agent, scope);
     const change = command !== null ? planInstall(file, agent, command) : planUninstall(file);
 
     if (!change.changed) {

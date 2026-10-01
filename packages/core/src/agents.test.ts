@@ -14,8 +14,15 @@ describe('agent registry', () => {
   });
 
   it('can install into every agent whose hooks are documented', () => {
-    // Exactly the four the product supports (D-060).
-    expect(installableAgents().map((a) => a.id).sort()).toEqual(['claude-code', 'codex', 'cursor', 'workbuddy']);
+    // The four shell-hook agents (D-060) plus the two bridge agents (D-102).
+    expect(installableAgents().map((a) => a.id).sort()).toEqual([
+      'claude-code',
+      'codex',
+      'cursor',
+      'opencode',
+      'pi',
+      'workbuddy',
+    ]);
   });
 
   it('knows where each documented agent keeps its hooks', () => {

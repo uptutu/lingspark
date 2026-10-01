@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { agentProfile } from '../agents.js';
 import type { AgentId } from '../agents.js';
 
 export type { AgentId } from '../agents.js';
@@ -35,6 +36,14 @@ export interface HookInput {
    * JSON on stdout rather than exit 2 plus stderr.
    */
   readonly cursor: boolean;
+  /**
+   * pi and opencode act on PostToolUse feedback by blocking the write itself
+   * (their bridges throw / return block before the tool runs, D-102). For them
+   * the "tell an error only once" dedup would be a bypass: the model retries
+   * the same write and the deduped second call passes. Blocking agents are
+   * told every error on every write, until they fix it.
+   */
+  readonly blockingPost: boolean;
   /**
    * The turn did not end normally: Cursor's stop `status` is "aborted" (the
    * user stopped it) or "error". Nothing may start the agent again then.
@@ -195,6 +204,7 @@ export function parseHookInput(raw: string, agent: AgentId, event: HookEvent): H
       data['stop_hook_active'] === true || (typeof data['loop_count'] === 'number' && data['loop_count'] > 0),
     // Our own Cursor hook knows it is Cursor even if a build stops sending the version.
     cursor: agent === 'cursor' || typeof data['cursor_version'] === 'string',
+    blockingPost: agentProfile(agent)?.blockingPost === true,
     aborted: typeof data['status'] === 'string' && data['status'] !== 'completed',
   };
 }

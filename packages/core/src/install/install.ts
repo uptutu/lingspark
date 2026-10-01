@@ -165,7 +165,7 @@ export interface ConfigChange {
   readonly changed: boolean;
 }
 
-function planChange(file: string, transform: (config: unknown) => unknown): ConfigChange {
+export function planChange(file: string, transform: (config: unknown) => unknown): ConfigChange {
   let before = '';
   let existed = true;
   try {

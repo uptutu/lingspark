@@ -172,3 +172,47 @@ export function hasOurHooks(config: unknown): { postToolUse: boolean; stop: bool
     Object.values(EVENT_KEYS).some((keys) => ourHandlersIn(hooks[keys[event]]).length > 0);
   return { postToolUse: has('post-tool-use'), stop: has('stop') };
 }
+
+/**
+ * Our hook commands in any text (bridge files are not JSON configs): matches
+ * the same `lingspark…hook --agent` signature isOurHandler uses, so a generated
+ * bridge file reads as "installed" to every existing check (D-102). Bridge
+ * files embed the command via JSON.stringify, so the pattern must tolerate
+ * backslash-escaped quotes, and matches are unescaped before returning.
+ */
+export function ourCommandsInText(text: string): string[] {
+  return [...text.matchAll(/"((?:\\.|[^"\\\n])*)"/gu)]
+    .map((m) => m[1] ?? '')
+    .filter((s) => /lingspark(?:\\.|[^"\\\n])*\bhook --agent\b/u.test(s))
+    .map((s) => s.replace(/\\"/gu, '"'));
+}
+
+/**
+ * opencode loads plugins only when named in its config's `plugin` array
+ * (D-102). The entry is a file:// URL of the generated bridge file. Like
+ * withHooksInstalled, other entries and unknown fields are preserved.
+ */
+export function withPluginInstalled(config: unknown, pluginUrl: string): Json {
+  const base: Json = isObject(config) ? { ...config } : {};
+  const existing = Array.isArray(base['plugin']) ? (base['plugin'] as unknown[]) : [];
+  const kept = existing.filter((p) => p !== pluginUrl);
+  base['plugin'] = [...kept, pluginUrl];
+  return base;
+}
+
+export function withPluginRemoved(config: unknown, pluginUrl: string): Json {
+  const base: Json = isObject(config) ? { ...config } : {};
+  const existing = Array.isArray(base['plugin']) ? (base['plugin'] as unknown[]) : [];
+  const kept = existing.filter((p) => p !== pluginUrl);
+  if (kept.length === 0) {
+    delete base['plugin'];
+  } else {
+    base['plugin'] = kept;
+  }
+  return base;
+}
+
+/** Whether an opencode config currently names our plugin entry. */
+export function hasOurPlugin(config: unknown, pluginUrl: string): boolean {
+  return isObject(config) && Array.isArray(config['plugin']) && (config['plugin'] as unknown[]).includes(pluginUrl);
+}

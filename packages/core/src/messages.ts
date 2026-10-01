@@ -83,7 +83,7 @@ export const msg = {
   setup               一步配置好：装进代理、选模型、在当前文件夹开启检查
   ui                  打开配置页（直接双击 lingspark 也会打开）
   check <file...>     检查文档
-  hook                代理 hook 适配层（由 Claude Code、Codex、Cursor、WorkBuddy 调用）
+  hook                代理 hook 适配层（由 Claude Code、Codex、Cursor、WorkBuddy、pi、opencode 调用）
   install             安装 hook
   uninstall           卸载 hook
   doctor              自检
@@ -173,7 +173,9 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
 
 安装只会在配置文件里增加或替换 lingspark 自己的条目，你的其他设置和其他 hook 原样保留；
 写之前会在同目录备份原文件。重复执行不会产生重复条目。
-`,
+pi 和 opencode 没有 hook 配置文件：安装会写入一个 lingspark 生成的桥接扩展
+（pi：~/.pi/agent/extensions/lingspark.ts，自动加载；opencode：plugins/lingspark.js，
+并在 opencode.json 的 plugin 数组里登记），效果相同。`,
     unknownAgent: (id: string) => `不认识的代理 "${id}"。用 lingspark install --help 看支持哪些。`,
     unverifiedAgent: (name: string, source: string) =>
       `${name} 的 hook 格式还没有官方文档可以核实（目前的依据：${source}），` +
@@ -185,6 +187,9 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
       `接入后运行 lingspark doctor 检查。也可以先用仓库里的 tools/hook-probe 看它实际传来的数据。`,
     noSource: '找不到正在运行的 lingspark 程序本身，无法安装。',
     copyFailed: (dest: string, detail: string) => `无法把 lingspark 复制到 ${dest}：${detail}`,
+    notOurs: (file: string) =>
+      `${file} 存在，但里面没有 lingspark 的挂钩命令——那可能是你自己写的文件。为避免改坏，LingSpark 不会覆盖它；请换个文件名或先移走它。`,
+    bridgeWriteFailed: (file: string, detail: string) => `无法写入桥接文件 ${file}：${detail}`,
     copyKept: (dest: string, detail: string) =>
       `没能换成新的一份（${dest}：${detail}），hook 继续跑原来那一份，功能不受影响。`,
     copied: (dest: string) => `lingspark 已复制到 ${dest}，hook 运行的是这一份。`,
@@ -450,7 +455,7 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
   },
   setup: {
     noAgentsFound:
-      '没有找到能接入的 Agent 工具。装好 Claude Code、Codex、Cursor 或 WorkBuddy 并用过一次后，重新打开 LingSpark。',
+      '没有找到能接入的 Agent 工具。装好 Claude Code、Codex、Cursor、WorkBuddy、pi 或 opencode 并用过一次后，重新打开 LingSpark。',
     judgeNotSaved: (why: string) => `Agent 工具已接入，但审稿方式没能写进配置：${why}`,
     sessionReview: '写文档的 Agent 在自己的对话里按标准审一遍，不用登录、不用装别的',
     selfReviewOn: '自己审稿：已开启',
@@ -481,19 +486,19 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
     usage: `lingspark setup [--judge <后端>] [--agents <代理,...>]
 
 一步配置好 lingspark：
-  1. 找到这台电脑上用过的代理（Claude Code、Codex、Cursor、WorkBuddy），把检查装进去
+  1. 找到这台电脑上用过的代理（Claude Code、Codex、Cursor、WorkBuddy、pi、opencode），把检查装进去
   2. 挑一个能用的模型做语义检查（已经配置过的不会改）
 
 之后代理写出的文档都会检查，不用选文件夹。
 
-  --judge <后端>      谁来审稿：session（对话内自审，默认）| auto（独立审稿）| codex-cli | anthropic | typesafe | agent-cli | none
+  --judge <后端>      谁来审稿：session（对话内自审，默认）| auto（独立审稿）| codex-cli | agent-cli | pi-cli | opencode-cli | anthropic | typesafe | none
   --agents <列表>     只装这几个代理，逗号分隔
 
 想用点按钮的方式：运行 lingspark ui，或者直接双击 lingspark。
 `,
     heading: 'lingspark 配置',
     agentsHead: '代理：',
-    noAgents: '  没有找到用过的代理（Claude Code、Codex、Cursor、WorkBuddy）。装好代理、用过一次之后再运行 lingspark setup。',
+    noAgents: '  没有找到用过的代理（Claude Code、Codex、Cursor、WorkBuddy、pi、opencode）。装好代理、用过一次之后再运行 lingspark setup。',
     communityAgent: (name: string) => `  ${name}：只有社区资料，没有自动接入；可按 lingspark install --help 手动配置`,
     judgeHead: '语义检查模型：',
     judgeKept: (b: string) => `  保持现有设置：${b}`,
