@@ -57,10 +57,10 @@ const DOC = [
 /**
  * D-089: S211 judges each section against the accumulated text before it.
  * The prior text is context, not the object of judgement, so the state the
- * judge sees carries a 【前文】 marker. Shadow status: hits are logged, never
- * shown.
+ * judge sees carries a 【前文】 marker. Active since D-095: a confident hit
+ * surfaces as a diagnostic.
  */
-describe('S211 章节与前言冲突 (shadow, section-cross)', () => {
+describe('S211 章节与前言冲突 (active, section-cross)', () => {
   const rules = loadBuiltin();
 
   it('sends each section a state that includes the prior text as 【前文】', async () => {
@@ -82,12 +82,12 @@ describe('S211 章节与前言冲突 (shadow, section-cross)', () => {
     expect(second).toContain('【章节内容】');
   });
 
-  it('a confident hit goes to shadowDiagnostics, not diagnostics', async () => {
+  it('a confident hit surfaces as a diagnostic, not a shadow one', async () => {
     const doc = parseDocument(DOC, { file: 's211.test.md' });
     const judge = new MockJudge((_state, name) => (name === 'S211' ? 0.9 : 0));
     const res = await runPass2({ doc, config, rules, judge, cache: freshCache(), budgetMs: 30_000 });
-    expect(res.diagnostics.filter((d) => d.ruleId === 'S211')).toEqual([]);
-    expect(res.shadowDiagnostics.map((d) => d.ruleId)).toContain('S211');
+    expect(res.diagnostics.map((d) => d.ruleId)).toContain('S211');
+    expect(res.shadowDiagnostics.filter((d) => d.ruleId === 'S211')).toEqual([]);
   });
 
   it('a document with only a title and body asks no section-cross question', async () => {
@@ -95,6 +95,7 @@ describe('S211 章节与前言冲突 (shadow, section-cross)', () => {
     const judge = new MockJudge(() => 0.9);
     const res = await runPass2({ doc, config, rules, judge, cache: freshCache(), budgetMs: 30_000 });
     expect(judge.calls.filter((c) => c.state.includes('【前文】'))).toEqual([]);
+    expect(res.diagnostics.filter((d) => d.ruleId === 'S211')).toEqual([]);
     expect(res.shadowDiagnostics.filter((d) => d.ruleId === 'S211')).toEqual([]);
   });
 });

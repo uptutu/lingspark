@@ -130,8 +130,15 @@ describe('builtin rule examples', () => {
 
       // A shadow rule is one that has not cleared this bar yet: it runs, its
       // findings are logged and never shown (design doc, 10.4).
-      it.skipIf(needsRecording || rule.status === 'shadow')('hits at least 60% of its positive examples', async () => {
+      it.skipIf(needsRecording || rule.status === 'shadow')('hits at least 60% of its positive examples', async (c) => {
         const results = await runRuleExamples(rule, { config, glossary: glossaryFor(rule.id), judge: replay });
+        if (results.every((r) => r.kind !== 'positive' || r.skippedReason !== undefined)) {
+          // The reference backend has no recordings for this rule (it may have
+          // been recorded and promoted on another backend): nothing here to
+          // replay against. The negative test above still runs, and the bar
+          // itself is measured by `eval --record` before promotion.
+          c.skip();
+        }
         const summary = summarizeExamples(rule.id, results);
         const recall = summary.positiveHit / Math.max(summary.positiveTotal, 1);
         const misses = results

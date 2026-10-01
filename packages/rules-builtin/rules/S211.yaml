@@ -6,7 +6,7 @@ kind: judge
 severity: warning
 scope: section-cross
 doc_types: [prd, tech-design, report, generic]
-status: shadow
+status: active
 origin: builtin
 
 question:
