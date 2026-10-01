@@ -21,3 +21,7 @@ export * from './setup.js';
 export * from './setup-server.js';
 export * from './today.js';
 export * from './shadow-report.js';
+export * from './feedback.js';
+export * from './rule-maturity.js';
+export * from './term-candidates-report.js';
+export * from './rules/term-candidates.js';

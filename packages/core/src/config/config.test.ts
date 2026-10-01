@@ -267,4 +267,15 @@ describe('createMatcher', () => {
     expect(m.docTypeForPath(path.join(root, 'docs', 'design', 'x.md'))).toBe('tech-design');
     expect(m.docTypeForPath(path.join(root, 'docs', 'other.md'))).toBe('generic');
   });
+
+  it('declared deliverables are in scope whatever their extension (D-093)', () => {
+    const m = build({ include: ['docs/**/*.md'], deliverables: ['site/**/*.html', 'README.rst'] });
+    const html = path.join(root, 'site', 'report.html');
+    expect(m.isDeclaredDeliverable(html)).toBe(true);
+    expect(m.isChecked(html)).toBe(true);
+    expect(m.isDeclaredDeliverable(path.join(root, 'docs', 'a.md'))).toBe(false);
+    // An excluded path stays excluded even when it matches deliverables.
+    const m2 = build({ include: ['docs/**/*.md'], exclude: ['site/draft/**'], deliverables: ['site/**/*.html'] });
+    expect(m2.isChecked(path.join(root, 'site', 'draft', 'x.html'))).toBe(false);
+  });
 });

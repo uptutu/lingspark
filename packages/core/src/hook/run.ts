@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { noteStillThere, recordIntercepts } from '../intercepts.js';
 import { performance } from 'node:perf_hooks';
 import {
@@ -6,14 +7,18 @@ import {
   HOOK_BUDGET_POST_MS,
   HOOK_BUDGET_STOP_MS,
   LOOP_GUARD_REPEAT,
+  WARNING_DECAY_DAYS,
+  WARNING_REPEAT_ESCALATE,
 } from '../constants.js';
 import { createChecker, type Checker, type FileCheckResult } from '../check.js';
 import type { Diagnostic } from '../diagnostics/types.js';
+import { fingerprintOf } from '../diagnostics/fingerprint.js';
 import type { Judge } from '../judge/types.js';
 import { appendJsonl, log } from '../log.js';
 import { msg } from '../messages.js';
 import { dataPaths, type PathEnv } from '../paths.js';
 import { formatFeedback } from './feedback.js';
+import { findAgentSuppressions } from './agent-suppressions.js';
 import { parseHookInput, type AgentId, type HookEvent, type HookInput } from './input.js';
 import { preflight } from './preflight.js';
 import { SessionStore } from './session.js';
@@ -63,12 +68,18 @@ function trySave(store: SessionStore, env: PathEnv | undefined): boolean {
  */
 const MAX_STOP_BLOCKS_WITHOUT_TURN = LOOP_GUARD_REPEAT;
 
+/** How many self-suppressions this run refused, for stats/runs.jsonl (D-092). */
+function agentSuppressCount(info: { readonly lines: readonly number[]; readonly optedOut: boolean } | undefined): number {
+  return (info?.lines.length ?? 0) + (info?.optedOut === true ? 1 : 0);
+}
+
 /** Per-file stats line for `stats/runs.jsonl`; the weekly report reads these. */
 function recordRun(
   input: HookInput,
   r: FileCheckResult,
   told: readonly Diagnostic[],
   loopGuarded: number,
+  agentSuppress: number,
   env: PathEnv | undefined,
 ): void {
   const tally = (list: readonly Diagnostic[]): Record<string, number> => {
@@ -92,6 +103,8 @@ function recordRun(
     // it was handed back (after the write, then again at Stop).
     reported: told.map((d) => d.fingerprint),
     loopGuarded,
+    // D-092: directives the agent wrote to silence checks about itself.
+    agentSuppress,
   });
   // Problems recorded for this file that this check no longer finds were fixed.
   noteStillThere(r.absPath, r.diagnostics, env);
@@ -128,6 +141,7 @@ function makeChecker(
   passSet: 'hookPost' | 'hookStop',
   budgetMs: number,
   agent: string,
+  agentSuppressions?: ReadonlyMap<string, { readonly lines: readonly number[]; readonly optedOut: boolean }>,
   skipSlow = passSet === 'hookPost',
 ): Checker {
   return createChecker({
@@ -142,6 +156,7 @@ function makeChecker(
     ...(deps.pathEnv !== undefined ? { pathEnv: deps.pathEnv } : {}),
     ...(deps.judge !== undefined ? { judge: deps.judge } : {}),
     ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
+    ...(agentSuppressions !== undefined ? { agentSuppressions } : {}),
   });
 }
 
@@ -163,11 +178,34 @@ async function checkAll(
 
 async function onPostToolUse(input: HookInput, files: readonly string[], deps: HookDeps): Promise<HookResult> {
   const env = deps.pathEnv;
-  const postChecker = makeChecker(deps, 'hookPost', HOOK_BUDGET_POST_MS, input.agent);
-  const results = await checkAll(files, postChecker, HOOK_BUDGET_POST_MS);
-  if (results.length === 0) return PASS;
-
   const store = SessionStore.open(input.sessionId, env);
+
+  // D-092: attribute suppression directives to whoever introduced them. A
+  // directive the agent's own write carries must not silence the check of
+  // that same write; the user's directives stand. Fail-open: attribution
+  // failures only lose the attribution, never the check.
+  const attributions = new Map<string, { lines: readonly number[]; optedOut: boolean }>();
+  for (const f of files) {
+    let text: string;
+    try {
+      text = readFileSync(f, 'utf8');
+    } catch {
+      continue;
+    }
+    const info = findAgentSuppressions(text, input.toolInput);
+    if (info.lines.length > 0 || info.optedOut) {
+      store.noteAgentSuppressions(f, info);
+      attributions.set(f, info);
+    }
+  }
+
+  const postChecker = makeChecker(deps, 'hookPost', HOOK_BUDGET_POST_MS, input.agent, attributions);
+  const results = await checkAll(files, postChecker, HOOK_BUDGET_POST_MS);
+  if (results.length === 0) {
+    trySave(store, env);
+    return PASS;
+  }
+
   store.addFiles(results.map((r) => r.absPath));
 
   // Queue what was written for the session's background warm-up, so the slow
@@ -190,7 +228,7 @@ async function onPostToolUse(input: HookInput, files: readonly string[], deps: H
   // Cursor ignores whatever a file-edit hook says, so there nothing is told
   // now: the errors stay unmarked and Stop reports them.
   if (input.cursor) {
-    for (const r of results) recordRun(input, r, [], 0, env);
+    for (const r of results) recordRun(input, r, [], 0, agentSuppressCount(attributions.get(r.absPath)), env);
     trySave(store, env);
     return { ...PASS, ...warm };
   }
@@ -202,9 +240,21 @@ async function onPostToolUse(input: HookInput, files: readonly string[], deps: H
   store.markPostReported(fresh.map((d) => d.fingerprint));
 
   for (const r of results) {
-    recordRun(input, r, fresh.filter((d) => d.file === r.absPath), 0, env);
+    recordRun(input, r, fresh.filter((d) => d.file === r.absPath), 0, agentSuppressCount(attributions.get(r.absPath)), env);
   }
   recordIntercepts(input.agent, 'write', fresh, env);
+  // D-091: machine-proposed glossary term pairs, for `lingspark terms`.
+  // Fail-open by construction: appendJsonl never throws.
+  for (const r of results) {
+    if (r.termCandidates !== undefined && r.termCandidates.length > 0) {
+      appendJsonl(dataPaths.termCandidates(env), {
+        ts: new Date().toISOString(),
+        agent: input.agent,
+        file: r.absPath,
+        candidates: r.termCandidates,
+      });
+    }
+  }
   // A failed save only costs deduplication: the next write may repeat these
   // errors. The model still hears about them now.
   trySave(store, env);
@@ -238,7 +288,12 @@ async function onStop(input: HookInput, store: SessionStore, deps: HookDeps): Pr
   const deadline = t0 + budget - 1_000;
   await waitForWarm(input.sessionId, deadline - STOP_RESERVE_MS, env);
   const warmStill = warmRunning(input.sessionId, env);
-  const checker = makeChecker(deps, 'hookStop', budget, input.agent, warmStill);
+  // D-092: what PostToolUse attributed to the agent itself keeps not
+  // applying at Stop, where the checks that matter run.
+  const attributions = new Map<string, { lines: readonly number[]; optedOut: boolean }>(
+    Object.entries(store.snapshot.agentSuppressions),
+  );
+  const checker = makeChecker(deps, 'hookStop', budget, input.agent, attributions, warmStill);
   const results = await checkAll(store.snapshot.files, checker, Math.max(1_000, deadline - performance.now()));
   if (results.length === 0) return PASS;
 
@@ -262,19 +317,60 @@ async function onStop(input: HookInput, store: SessionStore, deps: HookDeps): Pr
       : {};
 
   const all = [...results.flatMap((r) => r.diagnostics), ...(across?.diagnostics ?? [])];
-  const errors = all.filter((d) => d.severity === 'error');
-  const reported = new Set(store.snapshot.reportedWarnings);
-  // Each warning is shown once per session, then trusted to the model (5.3).
-  const newWarnings = all.filter((d) => d.severity === 'warning' && !reported.has(d.fingerprint));
+  // D-087: warnings decay. One is due again after WARNING_DECAY_DAYS; one
+  // shown WARNING_REPEAT_ESCALATE times without being fixed is escalated and
+  // blocks every Stop like an error, until fixed or the loop guard releases it.
+  const nowMs = Date.now();
+  const dueSet = new Set(
+    store.dueWarnings(
+      all.filter((d) => d.severity === 'warning').map((d) => d.fingerprint),
+      WARNING_DECAY_DAYS * 86_400_000,
+      nowMs,
+    ),
+  );
+  const newWarnings = all.filter((d) => d.severity === 'warning' && dueSet.has(d.fingerprint));
+  store.markWarningsReported(
+    newWarnings.map((d) => d.fingerprint),
+    new Date(nowMs).toISOString(),
+  );
+  store.escalateWarnings(
+    newWarnings.filter((w) => store.warningCount(w.fingerprint) >= WARNING_REPEAT_ESCALATE).map((d) => d.fingerprint),
+  );
+  const escalatedSet = new Set(store.snapshot.escalated);
+  const errors = all.filter((d) => d.severity === 'error' || escalatedSet.has(d.fingerprint));
+  const plainWarnings = newWarnings.filter((d) => !escalatedSet.has(d.fingerprint));
 
   const { kept, guarded } = applyLoopGuard(store, errors, env);
-  const toReport = [...kept, ...newWarnings];
+  const toReport = [...kept, ...plainWarnings];
 
   for (const r of results) {
     const mine = (list: readonly Diagnostic[]): number => list.filter((d) => d.file === r.absPath).length;
-    recordRun(input, r, toReport.filter((d) => d.file === r.absPath), mine(guarded), env);
+    recordRun(input, r, toReport.filter((d) => d.file === r.absPath), mine(guarded), agentSuppressCount(attributions.get(r.absPath)), env);
   }
   recordIntercepts(input.agent, 'stop', toReport, env);
+
+  // D-090: the amber list -- judge-suspected but below the report bar.
+  // Recorded every Stop; shown only when Stop already blocks, because an
+  // exit-0 Stop's stderr never reaches anyone. `lingspark check` shows the
+  // same list for manual runs.
+  const amber = results.flatMap((r) =>
+    (r.uncertain ?? []).map((u) => ({ u, file: r.absPath })),
+  );
+  if (amber.length > 0) {
+    recordIntercepts(
+      input.agent,
+      'stop',
+      amber.map(({ u, file }) => ({
+        file,
+        range: u.range,
+        ruleId: u.ruleId,
+        severity: 'info' as const,
+        message: `把握 ${String(Math.round(u.probability * 100))}%`,
+        fingerprint: fingerprintOf(u.ruleId, u.state),
+      })),
+      env,
+    );
+  }
 
   // In-session review (D-057): the documents whose current content the agent
   // has not reviewed yet, asked for at most once a turn.
@@ -288,19 +384,24 @@ async function onStop(input: HookInput, store: SessionStore, deps: HookDeps): Pr
     // The request still open counts: three asked in all, then no more.
     store.snapshot.reviewUnanswered + (store.snapshot.reviewPending === null ? 0 : 1) < LOOP_GUARD_REPEAT
   ) {
-    const due = results
-      .map((r) => r.absPath)
-      .filter((f) => {
-        const h = contentHash(f);
-        return h !== null && store.snapshot.reviewed[f] !== h;
-      });
+    const due: string[] = [];
+    // What each document looked like going out: the text the report's quotes
+    // will be cut from, so that report can be read back (D-094).
+    const dueHashes: Record<string, string> = {};
+    for (const f of results.map((r) => r.absPath)) {
+      const h = contentHash(f);
+      if (h !== null && store.snapshot.reviewed[f] !== h) {
+        due.push(f);
+        dueHashes[f] = h;
+      }
+    }
     const rules = [...settings.rules.values()]
       .filter((r) => r.kind === 'judge' && r.status === 'active' && (r.pass === 2 || r.pass === 3))
       .sort((a, b) => a.id.localeCompare(b.id));
     if (due.length > 0 && rules.length > 0) {
       const report = reportPathFor(input.cwd, input.sessionId);
       review = reviewRequest(due, rules, report, input.cwd);
-      store.markReviewRequested({ turn: turnKey, files: due, report });
+      store.markReviewRequested({ turn: turnKey, files: due, report, hashes: dueHashes });
     }
   }
 
@@ -309,7 +410,7 @@ async function onStop(input: HookInput, store: SessionStore, deps: HookDeps): Pr
     return { ...PASS, ...warm };
   }
 
-  store.markWarningsReported(newWarnings.map((d) => d.fingerprint));
+  // Warnings were marked shown above (D-087 decay), together with escalation.
   store.bumpStopBlock(turnKey);
   // Blocking Stop is only safe while the per-turn cap and the loop guard are
   // being recorded. If they cannot be, the next Stop would block again, and
@@ -320,7 +421,16 @@ async function onStop(input: HookInput, store: SessionStore, deps: HookDeps): Pr
     toReport.length === 0
       ? ''
       : formatFeedback(toReport, { cwd: input.cwd, atStop: true, includesWarnings: newWarnings.length > 0 });
-  const text = [found, review].filter((t) => t !== '').join('\n');
+  // The amber list rides along when there is a message at all (D-090). On
+  // Cursor the follow-up message is shown the same way as a block reason.
+  const amberText =
+    amber.length === 0
+      ? ''
+      : [
+          msg.hook.amberNote(amber.length),
+          ...amber.map(({ u }) => msg.hook.amberItem(u.range.start.line, u.ruleId, u.probability)),
+        ].join('\n');
+  const text = [found, review, amberText].filter((t) => t !== '').join('\n');
   if (input.cursor) return { exitCode: EXIT_OK, stderr: '', stdout: cursorStopReply(input.agent, text), ...warm };
   return { exitCode: EXIT_HOOK_BLOCK, stderr: text, ...warm };
 }
@@ -370,8 +480,32 @@ export async function runHook(raw: string, agent: AgentId, event: HookEvent, dep
       return PASS;
     }
     const pre = preflight(input, deps.pathEnv);
-    if (!pre.proceed) return PASS;
-    return await runHookChecks(input, pre.files, pre.store, deps);
+    // D-093: the gate drops non-Markdown before config exists; a project's
+    // declared deliverables get a second chance. Dynamically imported so the
+    // hook's no-op path stays free of the config stack.
+    const rescue = async (dropped: readonly string[]): Promise<readonly string[]> => {
+      if (dropped.length === 0) return [];
+      try {
+        const { rescueDeliverables } = await import('./deliverables.js');
+        return rescueDeliverables(dropped, deps.pathEnv);
+      } catch {
+        return [];
+      }
+    };
+    if (!pre.proceed) {
+      if (input.event === 'post-tool-use' && pre.reason === 'no-candidate-files') {
+        const rescued = await rescue(input.files);
+        if (rescued.length > 0) return await runHookChecks(input, rescued, null, deps);
+      }
+      return PASS;
+    }
+    let files = pre.files;
+    if (input.event === 'post-tool-use') {
+      const dropped = input.files.filter((f) => !pre.files.includes(f));
+      const rescued = await rescue(dropped);
+      if (rescued.length > 0) files = [...pre.files, ...rescued];
+    }
+    return await runHookChecks(input, files, pre.store, deps);
   } catch (err: unknown) {
     log('error', msg.log.hookFailed(err instanceof Error ? (err.stack ?? err.message) : String(err)), deps.pathEnv);
     return PASS;

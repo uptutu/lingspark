@@ -147,10 +147,13 @@ label.row { cursor: pointer; }
 .meta .file { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { margin-left: auto; font-size: 10.5px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
 .tag.done { color: var(--ok); background: rgba(76, 208, 125, 0.1); }
-.tag.open { color: #f0b429; background: rgba(240, 180, 41, 0.1); }
+.tag.open { color: var(--pend); background: rgba(217, 164, 65, 0.1); }
+/* Gone with the text: not evidence it was ever put right (D-095). */
+.tag.vanished { color: var(--pend); background: rgba(217, 164, 65, 0.1); border: 1px solid rgba(217, 164, 65, 0.35); }
 .card .more { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11.5px; }
 .card.open .more { display: block; }
 .more b { color: var(--text); font-weight: 500; }
+.more .warn { color: var(--pend); margin-bottom: 6px; }
 .more .act { margin-top: 6px; display: flex; gap: 12px; }
 .more .act button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 11.5px; padding: 0; cursor: pointer; }
 .more .act button:hover { color: var(--text); }
@@ -206,7 +209,7 @@ label.row { cursor: pointer; }
       <div class="tabs" id="logTabs">
         <button type="button" data-f="all" aria-pressed="true">全部</button>
         <button type="button" data-f="open" aria-pressed="false">仍在文中</button>
-        <button type="button" data-f="done" aria-pressed="false">已处理</button>
+        <button type="button" data-f="done" aria-pressed="false">不再报</button>
       </div>
       <div id="logList"></div>
     </div>
@@ -461,6 +464,12 @@ label.row { cursor: pointer; }
   // The records of what was stopped.
   var logScope = 'all', logFilter = 'all', logItems = [];
   var HOW = { write: '写入时拦下', stop: '结束时拦下', review: '结束时自审' };
+  // "检查器不再报" is all we know: that a later check did not find it (D-095).
+  var STATUS = {
+    open: '仍在文中',
+    done: '检查器不再报',
+    vanished: '不再报（正文同期明显变短）'
+  };
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
   var dayKey = function (d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
   function dayLabel(d) {
@@ -485,11 +494,14 @@ label.row { cursor: pointer; }
     var inScope = logItems.filter(function (r) { return logScope === 'all' || dayKey(new Date(r.ts)) === today; });
     var open = inScope.filter(function (r) { return r.status === 'open'; }).length;
     document.getElementById('logSummary').textContent =
-      (logScope === 'all' ? '累计 ' : '今天 ') + inScope.length + ' 处 · 已处理 ' + (inScope.length - open) + ' · 仍在文中 ' + open;
+      (logScope === 'all' ? '累计 ' : '今天 ') + inScope.length + ' 处 · 不再报 ' + (inScope.length - open) + ' · 仍在文中 ' + open;
     document.querySelectorAll('#logTabs button').forEach(function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-f') === logFilter));
     });
-    var rows = inScope.filter(function (r) { return logFilter === 'all' || r.status === logFilter; });
+    // "不再报" covers both: gone from the text, gone with the text (D-095).
+    var rows = inScope.filter(function (r) {
+      return logFilter === 'all' || r.status === logFilter || (logFilter === 'done' && r.status === 'vanished');
+    });
     var list = document.getElementById('logList');
     list.replaceChildren();
     if (rows.length === 0) {
@@ -514,11 +526,13 @@ label.row { cursor: pointer; }
       if (r.why) c.appendChild(el('div', 'why', r.why));
       var meta = el('div', 'meta');
       meta.append(el('span', 'file', r.file.split(/[\\\\/]/).pop()), el('span', null, '· ' + agentName(r.agent)),
-        el('span', 'tag ' + r.status, r.status === 'done' ? '已处理' : '仍在文中'));
+        el('span', 'tag ' + r.status, STATUS[r.status] || ''));
       c.appendChild(meta);
       var more = el('div', 'more');
       if (r.fix) { var fix = el('div'); fix.append(el('b', null, '建议：'), r.fix); more.appendChild(fix); }
-      if (r.how === 'review') more.appendChild(el('div', null, r.status === 'done' ? 'Agent 自审时已经改掉。' : 'Agent 自审时拿不准，没有改，留给你判断。'));
+      if (r.suspicious) more.appendChild(el('div', 'warn', '对不上：报告里给的原文片段在文件里找不到，或说已改而文件一字未改（审阅时文件没有被改动）。'));
+      if (r.how === 'review') more.appendChild(el('div', null, r.status === 'done' ? 'Agent 自审时报告说已经改掉。' : 'Agent 自审时拿不准，没有改，留给你判断。'));
+      else if (r.status === 'vanished') more.appendChild(el('div', null, '后来再检查这个文件已经不报了，但同期正文少了很大一块：可能是那段被删了，而不是改对了——这个检查器分不清。'));
       else if (r.status === 'done') more.appendChild(el('div', null, '后来再检查这个文件时，这个问题已经不在了。'));
       var act = el('div', 'act');
       var openBtn = el('button', null, r.line > 0 ? '打开文件（第 ' + r.line + ' 行）' : '打开文件');

@@ -47,7 +47,7 @@ lingspark 以 **hook** 的形式挂在代理上，代理不需要"记得"调用�
 
 | 平台 | 客户端（推荐） | 命令行版 |
 |---|---|---|
-| **Mac**（Apple 芯片） | `lingspark-…-mac-arm64.dmg`，拖进"应用程序" | `lingspark-macos-arm64` |
+| **Mac**（Apple 芯片 / Intel） | `lingspark-…-mac.dmg`，拖进"应用程序"（通用包，两种芯片都能用） | `lingspark-macos` |
 | **Windows**（x64） | `lingspark-…-win-x64-setup.exe`，双击安装 | `lingspark.exe` |
 | **Linux**（x64） | `lingspark_…_amd64.deb`（Debian/Ubuntu/Mint）或 `lingspark-…-linux-x64.tar.gz`（其他发行版） | 同名不带后缀的文件 |
 
@@ -187,19 +187,21 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 | S207 | 结论没有依据 | warning | 语义 |
 | S208 | AI 腔修辞 | info | 语义 |
 | S209 | 章节内容与标题不符 | warning | 语义 |
+| S210 | 同一指标换说法后数值对不上（影子） | info | 语义 |
+| S211 | 章节与前言冲突（影子） | warning | 语义 |
 | G301 | 跨文档说法矛盾（只比对同一次会话写的文档） | error | 语义 |
 
-规则都是 YAML（`packages/rules-builtin/rules/`），每条带至少 5 个正例和 5 个"看起来像但其实不是"的反例，这些例子同时是自动测试。语义规则上线的门槛是：**反例零误报、正例召回不低于 60%**，达不到的只以影子规则运行。
+规则都是 YAML（`packages/rules-builtin/rules/`），每条带至少 5 个正例和 5 个"看起来像但其实不是"的反例，这些例子同时是自动测试。语义规则上线的门槛是：**反例零误报、正例召回不低于 60%**，达不到的只以影子规则运行；上线之后看真实误报率（`lingspark feedback` 标记误报、`lingspark rule-maturity` 汇总建议），误报超预算的降回影子。
 
-个别地方不想被检查时，可以用注释关掉：`<!-- lingspark-disable-next-line D101 -->`；整篇文档关掉，在 frontmatter 里写 `lingspark: false`。
+个别地方不想被检查时，可以用注释关掉：`<!-- lingspark-disable D101 -->`；整篇文档关掉，在 frontmatter 里写 `lingspark: false`。代理自己写入的抑制不生效（照常检查、记入统计），用户写入的才作数；术语表（`.lingspark/glossary.yaml`）之外的疑似混用写法由机器提议（`lingspark terms`）、人工确认进表。
 
 ## 现状
 
-**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、对话内自审、Mac / Windows / Linux 客户端、模型横向评测、会话记录挖掘（Claude Code）。
+**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、对话内自审、Mac / Windows / Linux 客户端、模型横向评测、会话记录挖掘（Claude Code）、规则系统的漏报可见性（影子落盘 + 琥珀清单）、误报预算与成熟度分级（[PLAN.md](PLAN.md) 的 P0/P1）、检查边界按声明扩展（`deliverables`）。
 
 **还没做**：
 - 周报与自动回测：从你的修改意见里总结出候选规则，回测后交你审核上线
-- 规则系统演进：漏报可见性、误报预算、检查边界扩展，路线见 [PLAN.md](PLAN.md)
+- 影子规则积累真实误报数据后的升级决策（P2 各项的收尾，见 [PLAN.md](PLAN.md)）
 - 自动更新、macOS 签名与公证、代码签名（三个平台都没签）、Intel Mac
 
 欢迎提 issue 和 PR，尤其是：你在真实文档里遇到的误报（附一段脱敏后的原文）、新代理的 hook 接入实测。

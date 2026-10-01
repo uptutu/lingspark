@@ -151,8 +151,8 @@ footer { color: var(--faint); font-size: 13px; border-top: 1px solid var(--line)
       <thead><tr><th>系统</th><th>下载</th><th>装法</th></tr></thead>
       <tbody>
         <tr>
-          <td>macOS<br><span class="muted">Apple 芯片，12 及以上</span></td>
-          <td><code>lingspark-…-mac-arm64.dmg</code></td>
+          <td>macOS<br><span class="muted">Apple 芯片 / Intel，12 及以上</span></td>
+          <td><code>lingspark-…-mac.dmg</code></td>
           <td>双击打开，把 LingSpark 拖进「应用程序」</td>
         </tr>
         <tr>
@@ -316,7 +316,7 @@ footer { color: var(--faint); font-size: 13px; border-top: 1px solid var(--line)
 // has no build for that platform, it keeps pointing at the releases page.
 (function () {
   var ASSETS = [
-    { re: /mac-arm64\.dmg$/, text: '下载 Mac 版', meta: '适用于 Apple 芯片（M 系列）的 Mac · macOS 12 及以上' },
+    { re: /-mac\.dmg$/, text: '下载 Mac 版', meta: '适用于 Apple 芯片（M 系列）和 Intel 的 Mac · macOS 12 及以上' },
     { re: /win-x64-setup\.exe$/, text: '下载 Windows 版', meta: '适用于 64 位的 Windows 10 / 11' },
     { re: /_amd64\.deb$/, text: '下载 Linux 版', meta: 'Debian / Ubuntu / Mint 的 .deb 包' },
     { re: /linux-x64\.tar\.gz$/, text: '下载 Linux 版', meta: 'Arch / Fedora 等发行版解压即用' }

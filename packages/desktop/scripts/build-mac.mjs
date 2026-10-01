@@ -18,8 +18,8 @@ const { version } = JSON.parse(readFileSync(path.join(pkg, 'package.json'), 'utf
 const cli = path.resolve(pkg, '..', 'cli', 'sea', 'lingspark');
 const release = path.join(pkg, 'release');
 const work = path.join(release, 'work');
-const app = path.join(release, 'mac-arm64', 'LingSpark.app');
-const dmg = path.join(release, `lingspark-${version}-mac-arm64.dmg`);
+const app = path.join(release, 'mac', 'LingSpark.app');
+const dmg = path.join(release, `lingspark-${version}-mac.dmg`);
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit' });
 
 if (process.platform !== 'darwin') {
@@ -37,19 +37,30 @@ mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
 mkdirSync(path.join(contents, 'Resources', 'bin'), { recursive: true });
 mkdirSync(work, { recursive: true });
 
-// The window.
-run('xcrun', [
-  'swiftc',
-  '-O',
-  '-target',
-  'arm64-apple-macos12.0',
-  path.join(pkg, 'src', 'main.swift'),
-  '-o',
+// The window: one universal binary, an arm64 slice and an x86_64 slice merged
+// with lipo (D-099), so the same .dmg serves Apple silicon and Intel Macs.
+for (const arch of ['arm64', 'x86_64']) {
+  run('xcrun', [
+    'swiftc',
+    '-O',
+    '-target',
+    `${arch}-apple-macos12.0`,
+    path.join(pkg, 'src', 'main.swift'),
+    '-o',
+    path.join(work, `LingSpark-${arch}`),
+  ]);
+}
+run('lipo', [
+  '-create',
+  path.join(work, 'LingSpark-arm64'),
+  path.join(work, 'LingSpark-x86_64'),
+  '-output',
   path.join(contents, 'MacOS', 'LingSpark'),
 ]);
 
 // The CLI the window starts and the hooks run (a copy of it, installed on
-// first use).
+// first use). build-sea already merged its two architecture slices into one
+// universal binary on macOS.
 copyFileSync(cli, path.join(contents, 'Resources', 'bin', 'lingspark'));
 
 // The icon, from the one square PNG.

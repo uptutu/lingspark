@@ -81,6 +81,7 @@ export function composeQuestion(rule: Rule): Question | null {
   if (q === undefined) return null;
   const parts = [q.instructions.trim()];
   if (rule.scope === 'block') parts.push('只判断【当前段落】；【所属章节】和【上一段】只用来理解上下文。');
+  if (rule.scope === 'section-cross') parts.push('只判断【章节内容】与【前文】是否冲突；【前文】是已确认的上下文，不要就【前文】自身下结论。');
   if (rule.what !== undefined) parts.push(`要找的问题：${rule.what}`);
   if (rule.not_for !== undefined && rule.not_for.length > 0) {
     parts.push(`以下情况不算：\n${rule.not_for.map((x) => `- ${x}`).join('\n')}`);
@@ -108,6 +109,7 @@ interface Target {
 function targetsFor(doc: ParsedDoc, rules: readonly Rule[]): Target[] {
   const blockRules = rules.filter((r) => r.scope === 'block');
   const sectionRules = rules.filter((r) => r.scope === 'section');
+  const sectionCrossRules = rules.filter((r) => r.scope === 'section-cross');
   const out: Target[] = [];
 
   let previous: Block | undefined;
@@ -122,7 +124,7 @@ function targetsFor(doc: ParsedDoc, rules: readonly Rule[]): Target[] {
     previous = b;
   }
 
-  if (sectionRules.length > 0) {
+  if (sectionRules.length > 0 || sectionCrossRules.length > 0) {
     // A document's single top-level heading is its title, and its "section"
     // is the whole document: asking whether all of it matches the title is
     // both noisy and expensive -- every edit anywhere would re-ask it.
@@ -136,7 +138,25 @@ function targetsFor(doc: ParsedDoc, rules: readonly Rule[]): Target[] {
         if (b.kind !== 'heading') body.push(b);
       }
       if ([...body.map((b) => b.text).join('')].length < MIN_JUDGED_CHARS) return;
-      out.push({ state: sectionState(h, body), range: h.range, fingerprintText: h.text, rules: sectionRules });
+      if (sectionRules.length > 0) {
+        out.push({ state: sectionState(h, body), range: h.range, fingerprintText: h.text, rules: sectionRules });
+      }
+      if (sectionCrossRules.length > 0) {
+        // section-cross (D-089): the question is whether THIS section
+        // contradicts what earlier sections established. The prior text is
+        // context, judged as settled; truncate it so the request stays small.
+        const priorText = doc.blocks
+          .slice(0, i)
+          .map((b) => (b.kind === 'heading' ? `\n## ${b.text}` : b.text))
+          .join('\n');
+        const prior = priorText.length > MAX_SECTION_CHARS ? `${priorText.slice(0, MAX_SECTION_CHARS)}……` : priorText;
+        out.push({
+          state: `${sectionState(h, body)}\n【前文】${prior}`,
+          range: h.range,
+          fingerprintText: h.text,
+          rules: sectionCrossRules,
+        });
+      }
     });
   }
   return out;

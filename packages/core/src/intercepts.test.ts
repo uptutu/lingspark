@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Diagnostic } from './diagnostics/types.js';
@@ -76,5 +76,56 @@ describe('what LingSpark stopped (D-070)', () => {
     recordIntercepts('cursor', 'stop', [{ ...d101, file: doc }], env);
     expect(isRecordedFile(doc, env)).toBe(true);
     expect(isRecordedFile('/etc/hosts', env)).toBe(false);
+  });
+});
+
+/**
+ * "The check no longer finds it" and "the sentence is gone" look exactly alike
+ * from here. Only the size of the document tells them apart, and only roughly
+ * (D-095).
+ */
+describe('a problem the text took with it (D-095)', () => {
+  const filler = (n: number): string =>
+    Array.from({ length: n }, (_, i) => `第 ${i + 1} 段：说明这一段由谁来做、什么时候完成、怎么验收。`).join('\n');
+  const LONG = `# 方案\n\n${filler(30)}\n\n经过评估，本季度日活目标是 80 万。\n`;
+
+  it('does not read it as dealt with when most of the document went away', () => {
+    writeFileSync(doc, LONG);
+    recordIntercepts('workbuddy', 'write', [{ ...d101, file: doc }], env);
+    writeFileSync(doc, '# 方案\n'); // the sentence left, with the section around it
+    noteStillThere(doc, [], env);
+    expect(listIntercepts(env)[0]?.status).toBe('vanished');
+  });
+
+  it('still reads it as dealt with when the document kept its size', () => {
+    writeFileSync(doc, LONG);
+    recordIntercepts('workbuddy', 'write', [{ ...d101, file: doc }], env);
+    writeFileSync(doc, LONG.replace('80 万', '50 万')); // the number agreed, nothing gone
+    noteStillThere(doc, [], env);
+    expect(listIntercepts(env)[0]?.status).toBe('done');
+  });
+
+  it('takes no side for a record written before the size was kept', () => {
+    const legacy = {
+      type: 'intercept',
+      ts: new Date().toISOString(),
+      agent: 'workbuddy',
+      file: doc,
+      line: 5,
+      rule: 'D101',
+      how: 'write',
+      before: '',
+      hit: '80 万',
+      after: '',
+      why: '',
+      fix: '',
+      fp: 'fp-legacy',
+    };
+    writeFileSync(doc, LONG);
+    mkdirSync(path.join(root, 'stats'), { recursive: true });
+    writeFileSync(path.join(root, 'stats', 'intercepts.jsonl'), `${JSON.stringify(legacy)}\n`);
+    writeFileSync(doc, '# 方案\n');
+    noteStillThere(doc, [], env);
+    expect(listIntercepts(env).find((r) => r.rule === 'D101')?.status).toBe('done'); // no claim either way
   });
 });

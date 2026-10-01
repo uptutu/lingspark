@@ -3,6 +3,19 @@ import type { FileCheckResult } from './check.js';
 import type { Diagnostic } from './diagnostics/types.js';
 import { msg } from './messages.js';
 
+/** One amber item per line, `file:line: [RULE] 把握 N%`（D-090）. */
+export function formatAmberText(results: readonly FileCheckResult[], cwd: string): string {
+  const items: string[] = [];
+  for (const r of results) {
+    const shown = displayPath(r.absPath, cwd);
+    for (const u of r.uncertain ?? []) {
+      items.push(msg.check.amberItem(shown, u.range.start.line, u.ruleId, u.probability));
+    }
+  }
+  if (items.length === 0) return '';
+  return [msg.check.amberHead(items.length), ...items].join('\n');
+}
+
 /** Path shown to a human: relative to where they ran the command. */
 export function displayPath(absPath: string, cwd: string): string {
   const rel = path.relative(cwd, absPath);
@@ -54,6 +67,8 @@ export function formatResultsText(results: readonly FileCheckResult[], cwd: stri
   const t = tally(results);
   if (lines.length > 0) lines.push('');
   lines.push(msg.check.summary(results.length, t.errors, t.warnings, t.infos));
+  const amber = formatAmberText(results, cwd);
+  if (amber !== '') lines.push('', amber);
   return lines.join('\n');
 }
 
@@ -65,6 +80,11 @@ export function formatResultsJson(results: readonly FileCheckResult[], cwd: stri
     passesRun: r.passesRun,
     ...(r.skipped !== undefined ? { skipped: r.skipped } : {}),
     suppressedCount: r.suppressedCount,
+    amber: (r.uncertain ?? []).map((u) => ({
+      line: u.range.start.line,
+      ruleId: u.ruleId,
+      probability: u.probability,
+    })),
     diagnostics: r.diagnostics.map((d) => ({
       ...d,
       file: displayPath(path.resolve(d.file), cwd),

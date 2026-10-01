@@ -106,7 +106,7 @@ const minerSchema = z
 const requiredSectionsSchema = z.record(docTypeSchema, z.array(z.array(z.string())));
 
 /** Keys that only make sense in a project config. */
-export const PROJECT_ONLY_KEYS = ['include', 'exclude', 'doc_types', 'required_sections'] as const;
+export const PROJECT_ONLY_KEYS = ['include', 'exclude', 'doc_types', 'required_sections', 'deliverables'] as const;
 /** Keys that only make sense in the user-level config. */
 export const USER_ONLY_KEYS = ['miner'] as const;
 
@@ -128,6 +128,12 @@ export const projectConfigFileSchema = z
     /** Glob pattern -> doc type. Frontmatter `doc_type` wins over this. */
     doc_types: z.record(z.string(), docTypeSchema).optional(),
     required_sections: requiredSectionsSchema.optional(),
+    /**
+     * Declared final outputs (D-093): files the project says are deliverables,
+     * whatever their extension. The hook checks them like documents, and the
+     * extension-only gate lets them through.
+     */
+    deliverables: z.array(z.string()).optional(),
   })
   .strict();
 export type ProjectConfigFile = z.infer<typeof projectConfigFileSchema>;
@@ -149,6 +155,8 @@ export interface ResolvedConfig {
   readonly projectRoot: string | null;
   readonly include: readonly string[];
   readonly exclude: readonly string[];
+  /** Declared deliverable globs (D-093); matched against the project-relative path. */
+  readonly deliverables: readonly string[];
   readonly docTypes: ReadonlyMap<string, DocType>;
   readonly requiredSections: ReadonlyMap<DocType, readonly (readonly string[])[]>;
   readonly passes: {

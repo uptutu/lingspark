@@ -30,6 +30,8 @@ function rootless(absPath: string): string {
 export interface FileMatcher {
   /** Whether this file is in scope, ignoring frontmatter (design doc, 5.5 steps 1-2). */
   isChecked(absPath: string): boolean;
+  /** Whether the project declares this file a deliverable (D-093), by path alone. */
+  isDeclaredDeliverable(absPath: string): boolean;
   /** The doc type implied by the path. Frontmatter `doc_type` overrides this. */
   docTypeForPath(absPath: string): DocType;
 }
@@ -55,6 +57,8 @@ export function createMatcher(config: ResolvedConfig): FileMatcher {
   const exclude =
     projectRoot === null ? config.exclude.filter((p) => !BUILD_OUTPUT_EXCLUDE.includes(p)) : config.exclude;
   const isExcluded = exclude.length > 0 ? picomatch(exclude as string[], opts) : () => false;
+  const isDeliverable =
+    config.deliverables.length > 0 ? picomatch(config.deliverables as string[], opts) : () => false;
 
   const docTypeMatchers: { match: (s: string) => boolean; docType: DocType }[] = [];
   for (const [pattern, docType] of config.docTypes) {
@@ -65,7 +69,13 @@ export function createMatcher(config: ResolvedConfig): FileMatcher {
     isChecked(absPath: string): boolean {
       const rel = relative(absPath);
       if (rel === null) return false;
-      return isIncluded(rel) && !isExcluded(rel);
+      // D-093: a declared deliverable is in scope whatever its extension.
+      return (isIncluded(rel) || isDeliverable(rel)) && !isExcluded(rel);
+    },
+
+    isDeclaredDeliverable(absPath: string): boolean {
+      const rel = relative(absPath);
+      return rel !== null && isDeliverable(rel);
     },
 
     docTypeForPath(absPath: string): DocType {

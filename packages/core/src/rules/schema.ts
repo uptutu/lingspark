@@ -11,7 +11,7 @@ export type RuleOrigin = z.infer<typeof ruleOriginSchema>;
 export const ruleKindSchema = z.enum(['deterministic', 'judge']);
 export type RuleKind = z.infer<typeof ruleKindSchema>;
 
-export const ruleScopeSchema = z.enum(['block', 'section', 'document', 'claim_pair']);
+export const ruleScopeSchema = z.enum(['block', 'section', 'section-cross', 'document', 'claim_pair']);
 export type RuleScope = z.infer<typeof ruleScopeSchema>;
 
 const noulQuestionSchema = z

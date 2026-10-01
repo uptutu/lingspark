@@ -90,6 +90,9 @@ export const msg = {
   mine                挖掘会话记录
   eval                在带标签的样本上评测规则
   shadow-report       影子规则命中报告（最近 7 天）
+  feedback            标记一条诊断为误报
+  rule-maturity       按真实使用数据汇总规则成熟度
+  terms               术语表候选（机器提议，人工确认）
 
 选项：
   -h, --help          显示帮助
@@ -135,7 +138,11 @@ lingspark check --all [选项]
       `${String(index)}. 第 ${String(line)} 行 [${ruleId}] ${message}`,
     suggestion: (text: string) => `建议：${text}`,
     more: (n: number) => `另有 ${String(n)} 条未显示。`,
-    warningsNote: '以上提醒只会出现这一次；你判断不需要改的，可以说明理由后继续。',
+    warningsNote: '以上提醒 7 天内不会重复出现；同一问题多次提醒仍不改，会被当作错误拦住。',
+    amberNote: (n: number) =>
+      `另有 ${String(n)} 处可疑但模型把握不足（琥珀清单，不是错误，不阻碍结束，供你和用户参考）：`,
+    amberItem: (line: number, ruleId: string, p: number) =>
+      `  · 第 ${String(line)} 行 [${ruleId}]，把握 ${String(Math.round(p * 100))}%`,
     closing:
       '如果你认为某条是误报，向用户说明理由，不要自行添加 lingspark-disable 注释。',
   },
@@ -298,6 +305,59 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
     badDays: '选项 --days 需为 1 到 90 的整数。',
   },
 
+  /** `lingspark feedback` / `lingspark rule-maturity` (D-086): the fp ledger. */
+  feedback: {
+    usage: `lingspark feedback <规则号> <指纹>
+
+标记一条误报：这条诊断是错的。和拦截记录里的"展示次数"合在一起，
+就是这条规则的真实误报率（rule-maturity 查看）。
+
+  规则号      如 S204；指纹在 lingspark check --format json 的输出里。
+`,
+    badArgs: '用法：lingspark feedback <规则号> <指纹>',
+    recorded: (ruleId: string) => `已记录 ${ruleId} 的一条误报。`,
+  },
+
+  ruleMaturity: {
+    usage: `lingspark rule-maturity
+
+按真实使用数据汇总每条规则的成熟度：展示过多少次、被标过多少次误报、
+由此算出的建议等级。改不改规则的 status，由人看着这些数据决定。
+
+退出码：0。只读日志，不做任何检查。
+`,
+    title: '规则成熟度（真实使用数据）',
+    explain:
+      '展示 = 拦截记录里这条规则出现过的不同问题数；误报 = 用户用 lingspark feedback 标记过的数。' +
+      '误报率 ≥ 10% 建议降回影子；不足 30 次展示的一律"数据不足"。',
+    head: `规则    展示  误报  误报率  建议`,
+    row: (ruleId: string, shown: number, wrong: number, rate: number, suggestion: string) =>
+      `${ruleId.padEnd(7)} ${String(shown).padStart(4)} ${String(wrong).padStart(4)}  ${(rate * 100).toFixed(1).padStart(5)}%  ${suggestion}`,
+    empty: '还没有任何展示记录。用上几天再来。',
+    foot: '误报率 < 2% 且展示 ≥ 30 的规则，才有资格从提示升级为拦报；语义规则的召回以 lingspark eval 为准。',
+  },
+
+  /** `lingspark terms` (D-091): machine-proposed glossary pairs, human review. */
+  terms: {
+    usage: `lingspark terms
+
+汇总各篇文档里机器发现的术语候选：同一个意思的两种写法（互相包含或
+高度相似），都出现多次、又都不在术语表里。要不要收进 .lingspark/glossary.yaml，
+由人决定；收下之后 D102 就会盯住这对写法。
+
+退出码：0。只读日志，不做任何检查。
+`,
+    title: '术语候选（机器提议，人工确认）',
+    explain:
+      '两个写法在同一篇文档里都出现 ≥2 次、且都不被现有术语表覆盖，才会被提议。' +
+      '文件数 = 提议过这对写法的不同文档数；次数 = 各文档里较少一边出现次数之和。',
+    head: '写法 A    写法 B    文件数  次数  关系',
+    row: (a: string, b: string, files: number, occurrences: number, kind: string) =>
+      `${a.padEnd(10)}${b.padEnd(10)}${String(files).padStart(4)}  ${String(occurrences).padStart(4)}  ${kind}`,
+    empty: '还没有术语候选。hook 检查过一些文档后（写文档的会话里）再来。',
+    foot: '确认要收进术语表：在 .lingspark/glossary.yaml 里加一条，把规范写法放 preferred，另一种放 forbidden。',
+  },
+
   judge: {
     notConfigured:
       '没有配置判定后端，语义检查（第 2 遍）跳过了。在用户级配置的 judge.backend 里选一个：' +
@@ -378,6 +438,10 @@ lingspark uninstall --agent <代理> [--scope user|project] [--dry-run]
       (infos > 0 ? `，${infos} 条提示` : '') +
       '。',
     passesSkipped: (passes: string) => `注意：第 ${passes} 遍尚未实现，本次没有运行。`,
+    /** D-090: the amber list -- judge-suspected but below the report bar. */
+    amberHead: (n: number) => `另有 ${String(n)} 处可疑、但模型把握不足（琥珀清单，不阻断，供人工扫一眼）：`,
+    amberItem: (file: string, line: number, ruleId: string, p: number) =>
+      `  ${file}:${String(line)} [${ruleId}] 把握 ${String(Math.round(p * 100))}%`,
   },
   setup: {
     noAgentsFound:

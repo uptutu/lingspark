@@ -81,7 +81,7 @@ describe('Pass 2', () => {
     expect(blockRequests).toHaveLength(4);
     expect(blockRequests.some((c) => c.state.includes('短句'))).toBe(false);
     expect(Object.keys(blockRequests[0]?.questions ?? {}).sort()).toEqual(
-      ['S201', 'S202', 'S203', 'S204', 'S205', 'S206', 'S207', 'S208'],
+      ['S201', 'S202', 'S203', 'S204', 'S205', 'S206', 'S207', 'S208', 'S210'],
     );
   });
 
@@ -121,8 +121,14 @@ describe('Pass 2', () => {
     // question for the edited section is re-asked too, since its text changed;
     // the document title is not a section (see targetsFor).
     expect(asked.filter((a) => !a.startsWith('【章节'))).toEqual(['目前退货全靠']);
-    const sectionCalls = judge.calls.filter((c) => c.state.startsWith('【章节标题】'));
-    expect(sectionCalls.map((c) => c.state.split('\n')[0])).toEqual(['【章节标题】一、背景']);
+    // S209 (section scope) is re-asked only for the edited section; the
+    // document title is not a section (see targetsFor). S211 (section-cross,
+    // D-089) sees 【前文】, which contains the edited text, so both sections
+    // are re-asked.
+    const byRule = (id: string) => judge.calls.filter((c) => c.questions[id] !== undefined);
+    expect(byRule('S209').map((c) => c.state.split('\n')[0])).toEqual(['【章节标题】一、背景']);
+    expect(byRule('S211')).toHaveLength(2);
+    expect(byRule('S211').every((c) => c.state.includes('【前文】'))).toBe(true);
   });
 
   it('raises the bar for an uncalibrated judge', async () => {

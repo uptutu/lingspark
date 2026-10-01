@@ -87,6 +87,7 @@ export function resolveConfig(input: ResolveInput): ResolvedConfig {
     projectRoot: input.projectRoot,
     include: project?.include ?? DEFAULT_INCLUDE,
     exclude: project?.exclude ?? DEFAULT_EXCLUDE,
+    deliverables: project?.deliverables ?? [],
     docTypes,
     requiredSections,
     passes: {

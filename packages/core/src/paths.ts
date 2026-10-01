@@ -56,6 +56,10 @@ export const dataPaths = {
   outboundLog: (e?: PathEnv) => path.join(dataDir(e), 'logs', 'outbound.jsonl'),
   /** Per-hit shadow-rule records; the weekly report reads these (D-085). */
   shadowHits: (e?: PathEnv) => path.join(dataDir(e), 'logs', 'shadow-hits.jsonl'),
+  /** User-marked false positives, one line each (D-086). */
+  falsePositives: (e?: PathEnv) => path.join(dataDir(e), 'stats', 'false-positives.jsonl'),
+  /** Machine-proposed glossary term pairs; `lingspark terms` reviews these (D-091). */
+  termCandidates: (e?: PathEnv) => path.join(dataDir(e), 'feedback', 'term-candidates.jsonl'),
 } as const;
 
 /** The marker that opts a project in: `<project>/.lingspark/config.yaml`. */

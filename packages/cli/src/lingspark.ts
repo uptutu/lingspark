@@ -83,6 +83,18 @@ async function main(argv: string[]): Promise<number> {
       const { runShadowReport } = await import('./commands/shadow-report.js');
       return runShadowReport(rest, io);
     }
+    case 'feedback': {
+      const { runFeedback } = await import('./commands/feedback.js');
+      return runFeedback(rest, io);
+    }
+    case 'rule-maturity': {
+      const { runRuleMaturity } = await import('./commands/rule-maturity.js');
+      return runRuleMaturity(rest, io);
+    }
+    case 'terms': {
+      const { runTerms } = await import('./commands/terms.js');
+      return runTerms(rest, io);
+    }
     case 'report':
     case 'rules':
       io.err(`${msg.cli.notImplemented(command)}\n`);

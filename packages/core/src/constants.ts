@@ -38,6 +38,30 @@ export const MAX_FEEDBACK_DIAGNOSTICS = 10;
  */
 export const LOOP_GUARD_REPEAT = 3;
 
+/**
+ * A warning is re-shown at Stop after this many days (D-087): shown once,
+ * trusted only within the window. The model has no persistent memory across
+ * sessions, so silence is not agreement.
+ */
+export const WARNING_DECAY_DAYS = 7;
+
+/**
+ * A warning the agent has been shown this many times (without it decaying
+ * out) is escalated to a blocking report (D-087): repeated disregard for the
+ * same problem is treated like an error.
+ */
+export const WARNING_REPEAT_ESCALATE = 3;
+
+/**
+ * A problem stopped being reported in a document that has kept this share of
+ * its size (or more): recorded as dealt with. Less than that, and it is
+ * recorded as vanished instead -- deleting the sentence deletes the problem
+ * too, and the checker cannot tell which happened (D-095). Both numbers have
+ * to hold, so that short documents do not tip over on a few characters.
+ */
+export const RESOLVED_SHRINK_RATIO = 0.6;
+export const RESOLVED_SHRINK_MIN_CHARS = 200;
+
 /** Upper bound on claim pairs compared in Pass 3 for a single document. */
 export const MAX_CLAIM_PAIRS = 200;
 

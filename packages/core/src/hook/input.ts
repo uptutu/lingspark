@@ -20,6 +20,8 @@ export interface HookInput {
   readonly cwd: string;
   /** Absolute paths written by this tool call; empty for Stop. */
   readonly files: readonly string[];
+  /** The raw `tool_input` payload, kept for suppression attribution (D-092). */
+  readonly toolInput: unknown;
   /**
    * Codex sets `stop_hook_active` when this turn was already continued by a
    * Stop hook. Claude Code has no such field (DECISIONS V-4), so it is always
@@ -75,7 +77,7 @@ export function pathsFromApplyPatch(patch: string): string[] {
 }
 
 /** Every string anywhere inside a value, for fishing a patch out of unknown shapes. */
-function stringsIn(value: unknown, depth = 0): string[] {
+export function stringsIn(value: unknown, depth = 0): string[] {
   if (depth > 4) return [];
   if (typeof value === 'string') return [value];
   if (Array.isArray(value)) return value.flatMap((v) => stringsIn(v, depth + 1));
@@ -187,6 +189,7 @@ export function parseHookInput(raw: string, agent: AgentId, event: HookEvent): H
     cwd,
     // Cursor's afterFileEdit puts file_path at the top level, not in tool_input.
     files: event === 'post-tool-use' ? extractPaths(data['tool_input'] ?? data, cwd) : [],
+    toolInput: event === 'post-tool-use' ? (data['tool_input'] ?? data) : null,
     // Cursor counts the follow-ups its stop hooks already caused in `loop_count`.
     stopHookActive:
       data['stop_hook_active'] === true || (typeof data['loop_count'] === 'number' && data['loop_count'] > 0),

@@ -8,6 +8,7 @@ import type { PathEnv } from '../paths.js';
 import { extractPaths, parseHookInput, pathsFromApplyPatch, pathsFromCommand, SHELL_WRITE_WINDOW_MS } from './input.js';
 import { gateFiles } from './gate.js';
 import { SessionStore, sessionFileName } from './session.js';
+import { MockJudge } from '../judge/mock.js';
 import { runHook, type HookDeps } from './run.js';
 import { reportPathFor } from './review.js';
 
@@ -355,12 +356,228 @@ describe('runHook', () => {
     expect(((await runHook(stop(fx, 't2'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(0);
   });
 
+  /* D-087: warnings decay and escalate. */
+
+  const WARN_DOC = GOOD_DOC.replace('## 二、方案\n\n回滚：出问题时切回人工流程。\n', '## 二、方案\n\n#### 跳级标题\n\n正文。\n');
+
+  /** Ages every warning record in the session file and optionally sets its count. */
+  const ageWarnings = (daysAgo: number, count?: number): void => {
+    const file = path.join(fx.root, 'data', 'sessions', 's1.json');
+    const s = JSON.parse(readFileSync(file, 'utf8')) as {
+      warnings: Record<string, { last: string; count: number }>;
+    };
+    const last = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+    for (const k of Object.keys(s.warnings)) s.warnings[k] = { last, count: count ?? s.warnings[k]!.count };
+    writeFileSync(file, JSON.stringify(s));
+  };
+
+  it('re-shows a warning after the decay window (D-087)', async () => {
+    writeFileSync(fx.doc, WARN_DOC);
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
+    expect(((await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(2);
+    // Same window: not due again.
+    expect(((await runHook(stop(fx, 't2'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(0);
+    // Age it past the decay window: shown again.
+    ageWarnings(10);
+    const again = await runHook(stop(fx, 't3'), 'claude-code', 'stop', fx.deps);
+    expect(again.exitCode).toBe(2);
+    expect(again.stderr).toContain('[D105]');
+  });
+
+  it('escalates a repeatedly unheeded warning to blocking every turn (D-087)', async () => {
+    writeFileSync(fx.doc, WARN_DOC);
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
+    expect(((await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(2); // showing #1
+    // Pretend it was shown once more long ago: this showing makes #3 -> escalated.
+    ageWarnings(10, 2);
+    expect(((await runHook(stop(fx, 't2'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(2);
+    // Not due as a warning, but escalated: still blocks, like an error.
+    const blocked = await runHook(stop(fx, 't3'), 'claude-code', 'stop', fx.deps);
+    expect(blocked.exitCode).toBe(2);
+    expect(blocked.stderr).toContain('[D105]');
+    // The loop guard eventually releases it, as it does any error.
+    for (const turn of ['t4', 't5', 't6']) await runHook(stop(fx, turn), 'claude-code', 'stop', fx.deps);
+    expect(((await runHook(stop(fx, 't7'), 'claude-code', 'stop', fx.deps))).exitCode).toBe(0);
+  });
+
   it('writes a stats line per checked file', async () => {
     await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
     const lines = readFileSync(path.join(fx.root, 'data', 'stats', 'runs.jsonl'), 'utf8').trim().split('\n');
     const rec = JSON.parse(lines[0] ?? '{}') as { hits: Record<string, number>; blocked: number };
     expect(rec.hits['D111']).toBe(1);
     expect(rec.blocked).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------------ amber list (D-090) */
+
+describe('amber list (D-090)', () => {
+  // A paragraph long enough to be judged (MIN_JUDGED_CHARS) and free of
+  // deterministic errors: amber comes from the judge alone.
+  const LONG_DOC = '## 一、背景\n\n本期要先把工单处理时长降下来，这是客服团队目前最痛的问题，没有之一。\n';
+
+  let fx: Fixture;
+  beforeEach(() => {
+    fx = makeFixture();
+    mkdirSync(path.join(fx.root, 'data'), { recursive: true });
+    // Any non-session backend: no in-session review text in these assertions.
+    writeFileSync(path.join(fx.root, 'data', 'config.yaml'), 'judge:\n  backend: anthropic\n');
+    writeFileSync(fx.doc, LONG_DOC);
+  });
+  afterEach(() => rmSync(fx.root, { recursive: true, force: true }));
+
+  // 0.5 sits between T_LOW (0.4) and the report threshold (0.7): amber, no diagnostic.
+  const deps = (): HookDeps => ({ ...fx.deps, judge: new MockJudge(() => 0.5) });
+
+  const intercepts = (): { rule: string; why: string }[] => {
+    const f = path.join(fx.root, 'data', 'stats', 'intercepts.jsonl');
+    if (!existsSync(f)) return [];
+    return readFileSync(f, 'utf8')
+      .trim()
+      .split('\n')
+      .filter((l) => l !== '')
+      .map((l) => JSON.parse(l) as { rule: string; why: string });
+  };
+
+  it('amber alone never blocks, and is recorded for the client', async () => {
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', deps());
+    const r = await runHook(stop(fx, 't1'), 'claude-code', 'stop', deps());
+    expect(r.exitCode).toBe(0);
+    expect(intercepts().some((i) => i.why.includes('把握'))).toBe(true);
+  });
+
+  it('amber rides along when Stop blocks for real problems', async () => {
+    writeFileSync(fx.doc, `${LONG_DOC}\nTODO: 补充数据口径。\n`);
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', deps());
+    const r = await runHook(stop(fx, 't1'), 'claude-code', 'stop', deps());
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('琥珀清单');
+    expect(r.stderr).toContain('[D108]');
+  });
+});
+
+/* ------------------------------------------------------------ term candidates (D-091) */
+
+describe('term candidates (D-091)', () => {
+  // Two spellings of one metric, each frequent, neither in the (empty) glossary.
+  const DRIFT_DOC = [
+    '## 指标口径',
+    '',
+    '日活跃用户是核心指标。日活跃用户每天统计一次。',
+    '',
+    '运营侧叫日活用户。日活用户不参与分成。',
+  ].join('\n');
+
+  let fx: Fixture;
+  beforeEach(() => {
+    fx = makeFixture();
+    mkdirSync(path.join(fx.root, 'data'), { recursive: true });
+    writeFileSync(path.join(fx.root, 'data', 'config.yaml'), 'judge:\n  backend: anthropic\n');
+    writeFileSync(fx.doc, DRIFT_DOC);
+  });
+  afterEach(() => rmSync(fx.root, { recursive: true, force: true }));
+
+  const records = (): { file: string; candidates: { a: string; b: string }[] }[] => {
+    const f = path.join(fx.root, 'data', 'feedback', 'term-candidates.jsonl');
+    if (!existsSync(f)) return [];
+    return readFileSync(f, 'utf8')
+      .trim()
+      .split('\n')
+      .filter((l) => l !== '')
+      .map((l) => JSON.parse(l) as { file: string; candidates: { a: string; b: string }[] });
+  };
+
+  it('PostToolUse persists machine-proposed term pairs for `lingspark terms`', async () => {
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
+    const all = records().flatMap((r) => r.candidates.map((c) => [c.a, c.b].sort().join('|')));
+    expect(all).toContain('日活用户|日活跃用户');
+  });
+});
+
+/* ------------------------------------------------------------ suppression attribution (D-092) */
+
+describe('suppression attribution (D-092)', () => {
+  const SUPPRESSED_DOC = `# 方案\n\n## 二、方案\n\n<!-- lingspark-disable D108 -->\n\nTODO: 补充回滚方案。\n`;
+  const OPTED_OUT_DOC = '---\nlingspark: false\n---\n\n# 方案\n\nTODO: 补充回滚方案。\n';
+
+  let fx: Fixture;
+  beforeEach(() => {
+    fx = makeFixture();
+    mkdirSync(path.join(fx.root, 'data'), { recursive: true });
+    writeFileSync(path.join(fx.root, 'data', 'config.yaml'), 'judge:\n  backend: anthropic\n');
+  });
+  afterEach(() => rmSync(fx.root, { recursive: true, force: true }));
+
+  // tool_input carries the whole new content: the write introduced everything in it.
+  const postWithContent = (file: string, content: string): string =>
+    JSON.stringify({ session_id: 's1', prompt_id: 'p1', cwd: fx.project, tool_input: { file_path: file, content } });
+
+  it('a suppression comment the agent wrote does not silence the error in the same write', async () => {
+    writeFileSync(fx.doc, SUPPRESSED_DOC);
+    const r = await runHook(postWithContent(fx.doc, SUPPRESSED_DOC), 'claude-code', 'post-tool-use', fx.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('[D108]');
+    // And Stop still sees it: the attribution survives in the session.
+    const stop = await runHook(JSON.stringify({ session_id: 's1', prompt_id: 'p1', cwd: fx.project }), 'claude-code', 'stop', fx.deps);
+    expect(stop.exitCode).toBe(2);
+    expect(stop.stderr).toContain('[D108]');
+  });
+
+  it("the same comment, written by the user, still silences the error", async () => {
+    // The file carries the directive, but this tool call's payload does not:
+    // the directive predates the write and is the user's.
+    writeFileSync(fx.doc, SUPPRESSED_DOC);
+    const r = await runHook(postWithContent(fx.doc, '只调整了下措辞。'), 'claude-code', 'post-tool-use', fx.deps);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("`lingspark: false` frontmatter the agent wrote does not opt the file out", async () => {
+    writeFileSync(fx.doc, OPTED_OUT_DOC);
+    const r = await runHook(postWithContent(fx.doc, OPTED_OUT_DOC), 'claude-code', 'post-tool-use', fx.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('[D108]');
+  });
+
+  it('counts refused self-suppressions in the per-file stats', async () => {
+    writeFileSync(fx.doc, SUPPRESSED_DOC);
+    await runHook(postWithContent(fx.doc, SUPPRESSED_DOC), 'claude-code', 'post-tool-use', fx.deps);
+    const runs = readFileSync(path.join(fx.root, 'data', 'stats', 'runs.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as { agentSuppress?: number });
+    expect(runs[0]?.agentSuppress).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------ deliverables rescue (D-093) */
+
+describe('deliverables rescue (D-093)', () => {
+  let fx: Fixture;
+  beforeEach(() => {
+    fx = makeFixture();
+    mkdirSync(path.join(fx.root, 'data'), { recursive: true });
+    writeFileSync(path.join(fx.root, 'data', 'config.yaml'), 'judge:\n  backend: anthropic\n');
+    writeFileSync(
+      path.join(fx.project, '.lingspark', 'config.yaml'),
+      'include: ["docs/**/*.md"]\ndeliverables: ["site/**/*.html"]\n',
+    );
+    mkdirSync(path.join(fx.project, 'site'), { recursive: true });
+  });
+  afterEach(() => rmSync(fx.root, { recursive: true, force: true }));
+
+  it('a declared deliverable is checked though the gate drops non-Markdown', async () => {
+    const html = path.join(fx.project, 'site', 'report.html');
+    writeFileSync(html, '<h1>报告</h1>\n\nTODO: 补充数据来源。\n');
+    const r = await runHook(post(fx, html), 'claude-code', 'post-tool-use', fx.deps);
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('[D108]');
+  });
+
+  it('a non-declared non-Markdown file stays a no-op', async () => {
+    const css = path.join(fx.project, 'site', 'style.css');
+    writeFileSync(css, 'body { color: red; }\n');
+    const r = await runHook(post(fx, css), 'claude-code', 'post-tool-use', fx.deps);
+    expect(r.exitCode).toBe(0);
   });
 });
 
@@ -377,11 +594,11 @@ describe('in-session review', () => {
   afterEach(() => rmSync(fx.root, { recursive: true, force: true }));
 
   const report = (session = 's1'): string => reportPathFor(fx.project, session);
-  const runs = (): { event: string; findings?: number }[] =>
+  const runs = (): { event: string; findings?: number; suspicious?: number }[] =>
     readFileSync(path.join(fx.root, 'data', 'stats', 'runs.jsonl'), 'utf8')
       .trim()
       .split('\n')
-      .map((l) => JSON.parse(l) as { event: string; findings?: number });
+      .map((l) => JSON.parse(l) as { event: string; findings?: number; suspicious?: number });
 
   it('asks the writing agent to review its documents at the end of the turn', async () => {
     await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
@@ -400,7 +617,7 @@ describe('in-session review', () => {
     // The agent stops again in the same turn without a report: not asked twice.
     expect((await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps)).exitCode).toBe(0);
 
-    writeFileSync(report(), JSON.stringify({ findings: [{ file: 'docs/prd.md', rule: 'S204', quote: 'x', fixed: true }] }));
+    writeFileSync(report(), JSON.stringify({ findings: [{ file: 'docs/prd.md', rule: 'S204', quote: '回滚：出问题时切回人工流程。', fixed: false }] }));
     expect((await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps)).exitCode).toBe(0);
     expect(existsSync(report())).toBe(false); // taken in and removed from the user's folder
     expect(runs().find((r) => r.event === 'review')?.findings).toBe(1);
@@ -439,6 +656,24 @@ describe('in-session review', () => {
       asked.push((await runHook(stop(fx, turn), 'claude-code', 'stop', fx.deps)).stderr.includes('LingSpark 审稿'));
     }
     expect(asked).toEqual([true, true, true, false, false]);
+  });
+
+  it('does not take a report at its word when its quotes are nowhere to be found (D-094)', async () => {
+    await runHook(post(fx, fx.doc), 'claude-code', 'post-tool-use', fx.deps);
+    await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps);
+    // Nothing was edited, and this passage is in no document we wrote.
+    writeFileSync(
+      report(),
+      JSON.stringify({ findings: [{ file: 'docs/prd.md', rule: 'S204', quote: '这段从来没写过', fixed: false }] }),
+    );
+    await runHook(stop(fx, 't1'), 'claude-code', 'stop', fx.deps);
+
+    const intercepted = readFileSync(path.join(fx.root, 'data', 'stats', 'intercepts.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as { how?: string; suspicious?: boolean });
+    expect(intercepted.find((r) => r.how === 'review')?.suspicious).toBe(true);
+    expect(runs().find((r) => r.event === 'review')?.suspicious).toBe(1);
   });
 });
 

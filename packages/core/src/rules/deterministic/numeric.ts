@@ -284,34 +284,70 @@ export function normalizeLabel(label: string): string {
 /**
  * Decides whether two measurements contradict each other.
  *
+ * L1 is the strictest possible reading: same label character for character;
+ * same unit character for character; different number (design doc, 6.2).
+ *
+ * L2 (D-088) canonicalises units that convert without guessing -- 50 万
+ * against 500,000 元, 30 秒 against 1 分钟, 20% against 200‰. Two numbers in
+ * the same unit family compare by magnitude; families never mix (元 never
+ * compares with 美元, 人 never with 次), and units with no safe conversion
+ * (月、年、倍、个…) fall back to the L1 strictness.
+ *
  * Everything that returns true becomes an `error`-level diagnostic that blocks
- * the model, so this is the strictest possible reading of the design doc's
- * suggestion: same label, character for character; same unit, character for
- * character; different number. Nothing is inferred.
- *
- * Consequences of that strictness, all accepted deliberately:
- *   - `50 万` and `500000` are *not* compared. They are equal in arithmetic,
- *     but deciding that requires unit conversion, and a wrong conversion
- *     produces a confident false accusation.
- *   - prose and table measurements are not compared with each other, because
- *     a table label is a synthetic `行头·列头` join and can coincide with a
- *     prose noun phrase by accident.
- *   - two table cells are only compared when their tables sit under the same
- *     heading path and share a header row. Tables with identical headers in
- *     different sections are, on real documents, almost always the same
- *     analysis under different assumptions.
- *   - two values in the same paragraph or list item are never compared. On
- *     real documents that is an enumeration ("A 的月薪为 3 万元，B 的月薪为
- *     2.2 万元") or a worked calculation, not a contradiction. Except that
- *     a line ending in a full stop closes a part of its own (D-069): one
- *     sentence per line, no blank line between, is how agents write, and an
- *     enumeration runs on with commas.
- *   - a label that never repeats verbatim is never checked at all.
- *
- * This is the knob for the whole rule. Loosening any clause raises recall and
- * lowers precision together; design principle 1 says which way to err until
- * evaluation data says otherwise.
+ * the model, so the deliberate exclusions stay: prose and table measurements
+ * are not compared with each other; two table cells only under the same
+ * heading path and header row; two values in the same paragraph part never
+ * (enumerations and worked calculations); short labels only within one
+ * section. L3 -- paraphrased labels that *mean* the same metric -- is the
+ * shadow rule S210, asked of the judge, never of this function.
  */
+export interface Canonical {
+  readonly magnitude: number;
+  readonly dimension: string;
+}
+
+/**
+ * Unit families and their scales (D-088, layer L2). Anything not listed has
+ * no safe conversion -- months and years vary in length, 倍/分/点 mean
+ * different things in different contexts, and each counting noun is its own
+ * dimension -- and keeps the L1 char-for-char comparison.
+ */
+const UNIT_CANON: Readonly<Record<string, { readonly scale: number; readonly dimension: string }>> = {
+  '%': { scale: 0.01, dimension: 'ratio' },
+  '‰': { scale: 0.001, dimension: 'ratio' },
+  '万': { scale: 1e4, dimension: 'count' },
+  '亿': { scale: 1e8, dimension: 'count' },
+  '千': { scale: 1e3, dimension: 'count' },
+  '百': { scale: 1e2, dimension: 'count' },
+  'K': { scale: 1e3, dimension: 'count' },
+  'k': { scale: 1e3, dimension: 'count' },
+  'M': { scale: 1e6, dimension: 'count' },
+  'm': { scale: 1e6, dimension: 'count' },
+  'B': { scale: 1e9, dimension: 'count' },
+  '元': { scale: 1, dimension: 'money' },
+  '万元': { scale: 1e4, dimension: 'money' },
+  '亿元': { scale: 1e8, dimension: 'money' },
+  '美元': { scale: 1, dimension: 'usd' },
+  '毫秒': { scale: 0.001, dimension: 'time' },
+  'ms': { scale: 0.001, dimension: 'time' },
+  '秒': { scale: 1, dimension: 'time' },
+  's': { scale: 1, dimension: 'time' },
+  '分钟': { scale: 60, dimension: 'time' },
+  '小时': { scale: 3600, dimension: 'time' },
+  '天': { scale: 86400, dimension: 'time' },
+  '周': { scale: 604800, dimension: 'time' },
+  'KB': { scale: 1024, dimension: 'bytes' },
+  'MB': { scale: 1024 ** 2, dimension: 'bytes' },
+  'GB': { scale: 1024 ** 3, dimension: 'bytes' },
+  'TB': { scale: 1024 ** 4, dimension: 'bytes' },
+};
+
+/** The comparable form of a measurement, or null when its unit is not convertible. */
+export function canonicalOf(value: string, unit: string): Canonical | null {
+  const c = UNIT_CANON[unit];
+  return c === undefined ? null : { magnitude: Number(value) * c.scale, dimension: c.dimension };
+}
+
 function isConflict(a: Measurement, b: Measurement): boolean {
   if (a.source !== b.source) return false;
   if (a.scope !== b.scope) return false;
@@ -325,6 +361,13 @@ function isConflict(a: Measurement, b: Measurement): boolean {
   const sameSection = a.block.headingPath.join('\n') === b.block.headingPath.join('\n');
   if (!sameSection && labelChars < MIN_CROSS_SECTION_LABEL_CHARS) return false;
 
+  const ca = canonicalOf(a.value, a.unit);
+  const cb = canonicalOf(b.value, b.unit);
+  if (ca !== null && cb !== null) {
+    if (ca.dimension !== cb.dimension) return false;
+    const max = Math.max(1, Math.abs(ca.magnitude), Math.abs(cb.magnitude));
+    return Math.abs(ca.magnitude - cb.magnitude) > 1e-9 * max;
+  }
   if (a.unit !== b.unit) return false;
 
   return Number(a.value) !== Number(b.value);
@@ -350,15 +393,21 @@ const REPEATED_FIELD_VALUES = 3;
 function numericConsistency(ctx: RuleContext): Diagnostic[] {
   const all = collectMeasurements(ctx);
 
+  // D-088 L2: values that convert to the same magnitude (30 秒 = 1 分钟)
+  // must not count as distinct occurrences of a "recurring field", and the
+  // grouping key drops the raw unit so convertible spellings of one metric
+  // share a bucket. Units with no safe conversion keep the L1 raw comparison.
   const distinct = new Map<string, Set<string>>();
   for (const m of all) {
-    const key = `${m.source}|${m.scope}|${normalizeLabel(m.label)}|${m.unit}`;
+    const c = canonicalOf(m.value, m.unit);
+    const key = `${m.source}|${m.scope}|${normalizeLabel(m.label)}|${c?.dimension ?? `raw:${m.unit}`}`;
     let values = distinct.get(key);
     if (values === undefined) distinct.set(key, (values = new Set()));
-    values.add(String(Number(m.value)));
+    values.add(String(c?.magnitude ?? Number(m.value)));
   }
   const measurements = all.filter((m) => {
-    const key = `${m.source}|${m.scope}|${normalizeLabel(m.label)}|${m.unit}`;
+    const c = canonicalOf(m.value, m.unit);
+    const key = `${m.source}|${m.scope}|${normalizeLabel(m.label)}|${c?.dimension ?? `raw:${m.unit}`}`;
     return (distinct.get(key)?.size ?? 0) < REPEATED_FIELD_VALUES;
   });
 

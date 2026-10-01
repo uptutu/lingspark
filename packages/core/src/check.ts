@@ -20,6 +20,7 @@ import type { PathEnv } from './paths.js';
 import { loadGlossary, type Glossary } from './rules/glossary.js';
 import { loadRules, selectRules } from './rules/load.js';
 import type { Rule } from './rules/schema.js';
+import { detectTermCandidates, type TermCandidate } from './rules/term-candidates.js';
 // Registers every deterministic implementation. Without this import a checker
 // built from this module alone would find no impl for any Pass 1 rule.
 import './rules/deterministic/index.js';
@@ -51,6 +52,8 @@ export interface FileCheckResult {
   /** Pass 2 judgements between T_LOW and the threshold; Pass 4's input. */
   readonly uncertain?: readonly Uncertain[];
   readonly judgeStats?: Pass2Stats;
+  /** Machine-proposed glossary term pairs (D-091); the hook persists these. */
+  readonly termCandidates?: readonly TermCandidate[];
 }
 
 export interface CheckerOptions {
@@ -82,6 +85,12 @@ export interface CheckerOptions {
   readonly skipSlowJudge?: boolean;
   /** Injected for tests; passed to network-backed judges. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Suppression directives attributed to the checked agent itself (D-092), per
+   * absolute file path. Those directives do not silence anything; a user's own
+   * suppression of the same file is unaffected.
+   */
+  readonly agentSuppressions?: ReadonlyMap<string, { readonly lines: readonly number[]; readonly optedOut: boolean }>;
 }
 
 /** Everything that depends on which project a file belongs to. */
@@ -247,7 +256,19 @@ export function createChecker(opts: CheckerOptions): Checker {
     const state = stateFor(absPath);
     const docTypeFromPath = opts.docTypeOverride ?? state.matcher.docTypeForPath(absPath);
     const parsed = parseDocument(source, { file: absPath, docTypeFromPath });
-    const doc = opts.docTypeOverride !== undefined ? { ...parsed, docType: opts.docTypeOverride } : parsed;
+
+    // D-092: suppressions the agent introduced about itself do not silence
+    // checks. Strip exactly those; everything else in the file stands.
+    const attribution = opts.agentSuppressions?.get(absPath);
+    const effective =
+      attribution !== undefined && (attribution.lines.length > 0 || attribution.optedOut)
+        ? {
+            ...parsed,
+            suppressions: parsed.suppressions.filter((s) => !attribution.lines.includes(s.commentLine)),
+            ...(attribution.optedOut ? { optedOut: false as const } : {}),
+          }
+        : parsed;
+    const doc = opts.docTypeOverride !== undefined ? { ...effective, docType: opts.docTypeOverride } : effective;
 
     const base = { absPath, docType: doc.docType, warnings: state.warnings };
     if (doc.optedOut) {
@@ -300,6 +321,7 @@ export function createChecker(opts: CheckerOptions): Checker {
     diagnostics.sort(compareDiagnostics);
     shadowDiagnostics.sort(compareDiagnostics);
     if (shadowDiagnostics.length > 0) recordShadowHits(shadowDiagnostics, opts.pathEnv);
+    const termCandidates = detectTermCandidates(doc, state.glossary);
     return {
       ...base,
       diagnostics,
@@ -310,6 +332,7 @@ export function createChecker(opts: CheckerOptions): Checker {
       ...(judgeNote !== undefined ? { judgeNote } : {}),
       ...(uncertain !== undefined ? { uncertain } : {}),
       ...(judgeStats !== undefined ? { judgeStats } : {}),
+      ...(termCandidates.length > 0 ? { termCandidates } : {}),
     };
   };
 

@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - os: macos-14
-            asset: lingspark-macos-arm64
+            asset: lingspark-macos
             desktop: true
           # The program is the client on Windows: one executable, packed by
           # NSIS into an installer (D-061 / D-074).
