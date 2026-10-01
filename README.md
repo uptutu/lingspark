@@ -38,8 +38,9 @@ lingspark 以 **hook** 的形式挂在代理上，代理不需要"记得"调用�
 | 代理 | 支持程度 |
 |---|---|
 | Claude Code、Codex、Cursor、WorkBuddy | ✅ 支持，一键接入。Codex 需要在 Codex 里用 `/hooks` 信任一次 |
+| pi、opencode | ✅ 支持，一键接入。两者没有 hook 配置，安装写入一个 lingspark 生成的桥接扩展，重新打开代理后生效 |
 
-只支持这四个。其他代理（Qoder、CodeBuddy、Trae 等）不会被自动接入。
+只支持这六个。其他代理（Qoder、CodeBuddy、Trae 等）不会被自动接入。
 
 ## 安装
 
@@ -143,6 +144,8 @@ judge:
 | `auto` | 后台另起一个同款 Agent 审：Codex 写的由 Codex 审，Claude Code 写的由 Claude Code 审 | 那个 Agent 的命令行能在后台登录使用；Codex 直接可用 |
 | `codex-cli` | 借用本机已登录的 Codex（ChatGPT 订阅即可） | Codex 命令行，或 macOS 上的 ChatGPT 桌面版 |
 | `agent-cli` | 借用本机已登录的 Claude Code | 在终端里登录过的 `claude` 命令行 |
+| `pi-cli` | 借用本机已配置凭证的 pi | npm 全局安装的 pi（`@earendil-works/pi-coding-agent`），`pi auth` 配过 provider |
+| `opencode-cli` | 借用本机已登录的 opencode | npm 全局安装的 `opencode-ai`，登录过至少一个 provider |
 | `anthropic` | Claude API，默认 Claude Haiku 4.5 | `ANTHROPIC_API_KEY` |
 | `openai-compatible` | 任何兼容 OpenAI 的接口，包括国产模型和本机的 Ollama | `judge.endpoint`、`judge.model`，远程接口需要 `OPENAI_API_KEY` 或 `OPENROUTER_API_KEY` |
 | `typesafe` | Jev API | `TYPESAFE_API_KEY` |
@@ -188,7 +191,7 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 | S208 | AI 腔修辞 | info | 语义 |
 | S209 | 章节内容与标题不符 | warning | 语义 |
 | S210 | 同一指标换说法后数值对不上（影子） | info | 语义 |
-| S211 | 章节与前言冲突（影子） | warning | 语义 |
+| S211 | 章节与前言冲突 | warning | 语义 |
 | G301 | 跨文档说法矛盾（只比对同一次会话写的文档） | error | 语义 |
 
 规则都是 YAML（`packages/rules-builtin/rules/`），每条带至少 5 个正例和 5 个"看起来像但其实不是"的反例，这些例子同时是自动测试。语义规则上线的门槛是：**反例零误报、正例召回不低于 60%**，达不到的只以影子规则运行；上线之后看真实误报率（`lingspark feedback` 标记误报、`lingspark rule-maturity` 汇总建议），误报超预算的降回影子。
@@ -197,7 +200,7 @@ API key 也可以放在数据目录的 `credentials.yaml` 里。后台借用本�
 
 ## 现状
 
-**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、对话内自审、Mac / Windows / Linux 客户端、模型横向评测、会话记录挖掘（Claude Code）、规则系统的漏报可见性（影子落盘 + 琥珀清单）、误报预算与成熟度分级（[PLAN.md](PLAN.md) 的 P0/P1）、检查边界按声明扩展（`deliverables`）。
+**已完成**：确定性检查、语义检查、五种模型后端、缓存与离线模式、Claude Code / Codex / Cursor / WorkBuddy 的 hook 安装与自检、pi / opencode 的桥接扩展接入（D-102，2026-10-01 实测）、对话内自审、Mac / Windows / Linux 客户端、模型横向评测、会话记录挖掘（Claude Code）、规则系统的漏报可见性（影子落盘 + 琥珀清单）、误报预算与成熟度分级（[PLAN.md](PLAN.md) 的 P0/P1）、检查边界按声明扩展（`deliverables`）。
 
 **还没做**：
 - 周报与自动回测：从你的修改意见里总结出候选规则，回测后交你审核上线
@@ -238,7 +241,7 @@ runner 或自己的机器上构建，`release.yml` 就是按这个排的。
 
 ## English summary
 
-**LingSpark** (灵光, "a flash of inspiration") is a linter for Chinese Markdown documents written by AI coding agents (Claude Code, Codex, Cursor and WorkBuddy). It installs as an agent hook (`lingspark setup`, or double-click it for a setup page): after the agent writes a document, lingspark checks it and, if there are errors, blocks the agent from finishing its turn until they are fixed.
+**LingSpark** (灵光, "a flash of inspiration") is a linter for Chinese Markdown documents written by AI coding agents (Claude Code, Codex, Cursor, WorkBuddy, pi and opencode). It installs as an agent hook (`lingspark setup`, or double-click it for a setup page): after the agent writes a document, lingspark checks it and, if there are errors, blocks the agent from finishing its turn until they are fixed.
 
 - **Deterministic rules** (no model calls): inconsistent numbers, "three points" followed by a two-item list, dangling references, leftover placeholders, missing required sections, and more.
 - **Semantic rules**: each paragraph is judged with closed yes/no questions (ambiguous pronouns, empty buzzwords, conclusions without support, content not matching its heading), with explicit criteria, counter-examples and a confidence threshold. Pluggable backends: your signed-in Codex or Claude Code CLI, the Claude API, any OpenAI-compatible endpoint (including local Ollama), or Jev.
